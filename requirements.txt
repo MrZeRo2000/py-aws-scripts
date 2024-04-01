@@ -1,1 +1,4 @@
 pytest
+jupyter
+boto3
+aws-glue-sessions
