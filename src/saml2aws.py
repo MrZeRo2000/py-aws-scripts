@@ -8,7 +8,7 @@ ROLE_ARN = "arn:aws:iam::488115367344:role/ADFS-BI-Prod-DataDeveloper"
 ASSUME_ROLE_ARN = "arn:aws:iam::973209441745:role/ADFS-BI-Prod-DataDeveloper"
 
 ROLE_ARNS = {
-    "dev": {
+    "default": {
         "ROLE_ARN": "arn:aws:iam::488115367344:role/ADFS-BI-Dev-DataDeveloper",
         "ASSUME_ROLE_ARN": "arn:aws:iam::199480941921:role/ADFS-BI-Dev-DataDeveloper"
     },
