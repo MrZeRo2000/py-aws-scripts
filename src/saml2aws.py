@@ -12,6 +12,10 @@ ROLE_ARNS = {
         "ROLE_ARN": "arn:aws:iam::488115367344:role/ADFS-BI-Dev-DataDeveloper",
         "ASSUME_ROLE_ARN": "arn:aws:iam::199480941921:role/ADFS-BI-Dev-DataDeveloper"
     },
+    "dev": {
+        "ROLE_ARN": "arn:aws:iam::488115367344:role/ADFS-BI-Dev-DataDeveloper",
+        "ASSUME_ROLE_ARN": "arn:aws:iam::199480941921:role/ADFS-BI-Dev-DataDeveloper"
+    },
     "prod": {
         "ROLE_ARN": "arn:aws:iam::488115367344:role/ADFS-BI-Prod-DataDeveloper",
         "ASSUME_ROLE_ARN": "arn:aws:iam::973209441745:role/ADFS-BI-Prod-DataDeveloper"
@@ -83,6 +87,8 @@ for section in ROLE_ARNS:
             print("Error assuming role:" + "".join(role_errors))
         else:
             role_obj = json.loads("".join(role_output))["Credentials"]
+            if len(credentials_lines) > 0:
+                credentials_lines.append('')
             credentials_lines.extend(get_credentials_section(section, role_obj))
             print(f"Successfully completed section {section}")
 
