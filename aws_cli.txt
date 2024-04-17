@@ -1,0 +1,5 @@
+# List files from S3
+aws s3 ls s3://sds-prod-ingest-external-sftp-files-out/concardis-sftp-data --recursive --summarize --profile prod
+
+# Copy local file structure to AWS S3
+aws s3 cp data/SDS-10321 s3://sds-dev-temp-location/SDS-10321 --recursive
