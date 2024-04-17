@@ -1,8 +1,9 @@
-import os
-import json
+import datetime
+from dateutil.tz import tzutc
 import awswrangler as wr
 import boto3
 import argparse
+import concurrent.futures
 from logger import get_logger
 
 logger = get_logger(__name__)
@@ -36,9 +37,14 @@ class ConvertParquet:
         operation_parameters = {'Bucket': self.config.bucket, 'Prefix': self.config.prefix}
 
         result = []
+        current_date = datetime.datetime.now()
+        last_modified_date = datetime.datetime(current_date.year, current_date.month, current_date.day, tzinfo=tzutc())
         for page in paginator.paginate(**operation_parameters):
             result.extend(
-                [p['Key'] for p in page['Contents'] if  p['Size'] > 0]
+                [p['Key']
+                 for p in page['Contents']
+                 if p['Size'] > 0 and p['LastModified'] < last_modified_date
+                 ]
             )
         return result
 
@@ -60,6 +66,10 @@ class ConvertParquet:
         for file_name in file_names:
             self.process_file(file_name)
 
+    def execute_parallel(self):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            executor.map(self.process_file, self.list_file_names())
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -71,4 +81,4 @@ if __name__ == '__main__':
     app_config = Config(args.env, args.bucket, args.prefix)
     logger.info(f"App config: {app_config}")
 
-    ConvertParquet(app_config).execute()
+    ConvertParquet(app_config).execute_parallel()
