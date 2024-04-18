@@ -43,7 +43,7 @@ class ConvertParquet:
             result.extend(
                 [p['Key']
                  for p in page['Contents']
-                 if p['Size'] > 0 and p['LastModified'] < last_modified_date
+                 # if p['Size'] > 0 and p['LastModified'] < last_modified_date
                  ]
             )
         return result
@@ -55,6 +55,7 @@ class ConvertParquet:
 
         df = wr.s3.read_parquet(parquet_file_name)
         df['collector_number'] = df['collector_number'].astype('string')
+        df['POS_entry_mode'] = df['POS_entry_mode'].astype('string')
         # https://github.com/aws/aws-sdk-pandas/pull/1057
         # pyarrow_additional_kwargs={'flavor': None} to keep spaces in column name
         wr.s3.to_parquet(df, parquet_file_name, pyarrow_additional_kwargs={'flavor': None})
