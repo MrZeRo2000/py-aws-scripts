@@ -4,7 +4,7 @@ import awswrangler as wr
 import boto3
 import argparse
 import concurrent.futures
-from logger import get_logger
+from base.logger import get_logger
 
 logger = get_logger(__name__)
 

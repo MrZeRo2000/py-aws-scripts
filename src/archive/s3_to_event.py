@@ -4,7 +4,7 @@ import boto3
 import argparse
 import datetime
 from dateutil.tz import tzutc
-from logger import get_logger
+from base.logger import get_logger
 
 logger = get_logger(__name__)
 

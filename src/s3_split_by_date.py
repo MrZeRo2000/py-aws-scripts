@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 
 
-from logger import get_logger
+from base.logger import get_logger
 
 logger = get_logger(__name__)
 

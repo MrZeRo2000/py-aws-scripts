@@ -23,7 +23,7 @@ ROLE_ARNS = {
 }
 
 HOME_PATH = os.path.expanduser(os.getenv('USERPROFILE')).replace("\\", "/")
-SAML_ASSERT_FILE_NAME = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/saml-assert.txt")).replace("\\", "/")
+SAML_ASSERT_FILE_NAME = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/saml-assert.txt")).replace("\\", "/")
 CREDENTIALS_FILE_NAME = f"{HOME_PATH}/.aws/credentials"
 
 
