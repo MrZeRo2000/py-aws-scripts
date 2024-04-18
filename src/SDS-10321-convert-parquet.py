@@ -50,17 +50,20 @@ class ConvertParquet:
 
     def process_file(self, file_name):
         logger.info(f'Processing file {file_name}')
+        try:
+            parquet_file_name = f"s3://{self.config.bucket}/{file_name}"
 
-        parquet_file_name = f"s3://{self.config.bucket}/{file_name}"
+            df = wr.s3.read_parquet(parquet_file_name, boto3_session=self.config.session)
+            df['collector_number'] = df['collector_number'].astype('string')
+            df['POS_entry_mode'] = df['POS_entry_mode'].astype('string')
+            # https://github.com/aws/aws-sdk-pandas/pull/1057
+            # pyarrow_additional_kwargs={'flavor': None} to keep spaces in column name
+            wr.s3.to_parquet(df, parquet_file_name, pyarrow_additional_kwargs={'flavor': None}, boto3_session=self.config.session)
 
-        df = wr.s3.read_parquet(parquet_file_name)
-        df['collector_number'] = df['collector_number'].astype('string')
-        df['POS_entry_mode'] = df['POS_entry_mode'].astype('string')
-        # https://github.com/aws/aws-sdk-pandas/pull/1057
-        # pyarrow_additional_kwargs={'flavor': None} to keep spaces in column name
-        wr.s3.to_parquet(df, parquet_file_name, pyarrow_additional_kwargs={'flavor': None})
-
-        logger.info(f'Processed file {file_name}')
+            logger.info(f'Processed file {file_name}')
+        except Exception as e:
+            logger.error(f"Error processing file {file_name}: {e}")
+            raise e
 
     def execute(self):
         file_names = self.list_file_names()
@@ -68,8 +71,9 @@ class ConvertParquet:
             self.process_file(file_name)
 
     def execute_parallel(self):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            executor.map(self.process_file, self.list_file_names())
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            fs = [executor.submit(self.process_file, file) for file in self.list_file_names()]
+            concurrent.futures.wait(fs)
 
 
 if __name__ == '__main__':
