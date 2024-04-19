@@ -1,9 +1,6 @@
-import argparse
-import boto3
 from botocore.exceptions import ClientError
 import datetime
 import re
-from dataclasses import dataclass
 
 from base.cfg import BaseConfig, BaseParams
 from base.logger import get_logger
@@ -16,8 +13,8 @@ class S3SplitByDateConfig(BaseConfig):
 
 
 class S3SplitByDateParams(BaseParams):
-    def __init__(self, env: str, bucket: str, source_key: str, target_key: str, date_regexp: str):
-        super().__init__(env)
+    def __init__(self, env: str, dry_run: bool, bucket: str, source_key: str, target_key: str, date_regexp: str):
+        super().__init__(env, dry_run)
         self.bucket = bucket
         self.source_key = source_key
         self.target_key = target_key
@@ -83,16 +80,17 @@ class BaseS3SplitByDate:
             logger.info(f'Moving completed')
 
 
-def s3_split_by_date_run(config: S3SplitByDateConfig, params: S3SplitByDateParams):
-    sd = SplitByDate(config, params)
-
-    source_files = sd.list_files()
+def s3_split_by_date_run(config: S3SplitByDateConfig, params: S3SplitByDateParams, split_by_date: BaseS3SplitByDate):
+    source_files = split_by_date.list_files()
     logger.info(f'Found {len(source_files)} source files')
 
-    mapping = sd.get_mapping(source_files)
+    mapping = split_by_date.get_mapping(source_files)
     logger.info(f'Mapping: {str(mapping)}')
 
     for source_key, target_key in mapping:
         logger.info(f'Moving {source_key} to {target_key}')
-        sd.move_file(source_key, target_key)
-        logger.info(f'Moving completed')
+        if params.dry_run:
+            logger.info(f'Move skipped (dry-run)')
+        else:
+            split_by_date.move_file(source_key, target_key)
+            logger.info(f'Moving completed')

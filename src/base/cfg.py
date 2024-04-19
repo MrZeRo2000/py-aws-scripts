@@ -25,8 +25,9 @@ class BaseConfig(ABC):
 
 
 class BaseParams(ABC):
-    def __init__(self, env):
+    def __init__(self, env, dry_run=False):
         self.env = env
+        self.dry_run = dry_run
 
     def __repr__(self):
         return f"(env: {self.env})"
