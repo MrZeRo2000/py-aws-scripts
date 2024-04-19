@@ -6,7 +6,23 @@ logger = get_logger(__name__)
 
 
 class S3ToEvent(BaseS3ToEvent):
-    pass
+    def get_excluded_files(self) -> list:
+        return [
+            'concardis-sftp-data/6900979(_)4_6900979_20240131_1_R-MYXTRI__ETRAXIC-157680242.240130.000001_timestamp=2024-02-01T05:02:25.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20231228_1_R-MYXTRI__ETRAXIC-157680242.231227.000001_timestamp=2023-12-29T05:02:07.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20231214_1_R-MYXTRI__ETRAXIC-157680242.231213.000001_timestamp=2023-12-15T05:01:43.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20231207_1_R-MYXTRI__ETRAXIC-157680242.231206.000001_timestamp=2023-12-08T05:01:46.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20231123_1_R-MYXTRI__ETRAXIC-157680242.231122.000001_timestamp=2023-11-24T05:01:46.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20231116_1_R-MYXTRI__ETRAXIC-157680242.231115.000001_timestamp=2023-11-17T05:01:28.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20231102_1_R-MYXTRI__ETRAXIC-157680242.231101.000001_timestamp=2023-11-03T05:01:42.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20231026_1_R-MYXTRI__ETRAXIC-157680242.231025.000001_timestamp=2023-10-27T05:01:44.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20231012_1_R-MYXTRI__ETRAXIC-157680242.231011.000001_timestamp=2023-10-13T05:01:41.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20230928_1_R-MYXTRI__ETRAXIC-157680242.230927.000001_timestamp=2023-09-29T05:01:45.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20220603_1_R-MYXTRI__ETRAXIC-153215184.220602.000001_timestamp=2023-10-10T05:05:30.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20220528_1_R-MYXTRI__ETRAXIC-153215184.220527.000001_timestamp=2023-10-10T05:25:16.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20220520_1_R-MYXTRI__ETRAXIC-153215184.220519.000001_timestamp=2023-10-11T05:08:13.csv',
+            'concardis-sftp-data/6900979(_)4_6900979_20240202_1_R-MYXTRI__ETRAXIC-157680242.240131.000001_timestamp=2024-02-03T05:02:32.csv',
+        ]
 
 
 if __name__ == '__main__':
