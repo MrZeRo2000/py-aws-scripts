@@ -16,7 +16,7 @@ if __name__ == '__main__':
     parser.add_argument('source_key')
     parser.add_argument('target_key')
     parser.add_argument('date_regexp')
-    parser.add_argument('--dry_run')
+    parser.add_argument('--dry_run', default=False, required=False, action='store_true')
 
     args = parser.parse_args()
     logger.info(f'Starting s3_to_event with args: {args}')

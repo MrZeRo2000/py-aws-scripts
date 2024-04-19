@@ -85,7 +85,7 @@ def s3_split_by_date_run(config: S3SplitByDateConfig, params: S3SplitByDateParam
     logger.info(f'Found {len(source_files)} source files')
 
     mapping = split_by_date.get_mapping(source_files)
-    logger.info(f'Mapping: {str(mapping)}')
+    logger.info(f'Files to move: {len(mapping)}')
 
     for source_key, target_key in mapping:
         logger.info(f'Moving {source_key} to {target_key}')
