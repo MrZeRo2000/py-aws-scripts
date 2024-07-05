@@ -4,3 +4,4 @@ boto3
 aws-glue-sessions
 pyarrow
 awswrangler
+sqlglot
