@@ -47,7 +47,13 @@ if __name__ == '__main__':
     logger.info(f'Starting s3_to_event with args: {args}')
 
     config = S3ToEventConfig(args.env)
-    params = S3ToEventParams(args.env, args.input_bucket, args.output_bucket, args.prefix, int(args.limit))
+    params = S3ToEventParams(
+        env=args.env,
+        input_bucket=args.input_bucket,
+        output_bucket=args.output_bucket,
+        error_bucket=None,
+        prefix=args.prefix,
+        limit=int(args.limit))
     logger.info(f'Config: {config}, Params: {params}')
 
     s3_to_event_run(config, params, S3ToEvent(config, params))
