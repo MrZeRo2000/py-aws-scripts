@@ -130,9 +130,13 @@ class BaseS3ToEvent(ABC):
 
     def transform_to_event(self, ls: list) -> dict:
         return {
-            'Records': [
-                {'s3': {'bucket': {'name': self.params.input_bucket}, 'object': {'key': list_item['Key'], 'size': list_item['Size']}}}
-                for list_item in ls]
+            'Records': [{
+                'body': json.dumps({
+                    'Records': [
+                        {'s3': {'bucket': {'name': self.params.input_bucket}, 'object': {'key': list_item['Key'], 'size': list_item['Size']}}}
+                        ]
+                })
+            } for list_item in ls]
         }
 
 
@@ -161,22 +165,53 @@ def s3_to_event_run(config: S3ToEventConfig, params: S3ToEventParams, s3_to_even
 
     files_to_process = s3_to_event.get_files_to_process()
 
-    event = s3_to_event.transform_to_event(files_to_process[:params.limit])
-    logger.info(f"Generated event")
-
-    event_file_name = os.path.join(config.data_path, f's3_event_{config.env}.json')
-    with open(event_file_name, 'w') as f:
-        f.write(json.dumps(event))
-    logger.info(f"Event saved to {event_file_name}")
-
-    if dry_run:
-        logger.info(f"Dry run, skipping actions")
+    if len(files_to_process) == 0:
+        logger.info(f"No files to process")
     else:
-        lr = LambdaRunner(config, event_file_name)
-        lr.run()
+        event = s3_to_event.transform_to_event(files_to_process[:params.limit])
+        logger.info(f"Generated event")
+
+        event_file_name = os.path.join(config.data_path, f's3_event_{config.env}.json')
+        with open(event_file_name, 'w') as f:
+            f.write(json.dumps(event))
+        logger.info(f"Event saved to {event_file_name}")
+
+        if dry_run:
+            logger.info(f"Dry run, skipping actions")
+        else:
+            lr = LambdaRunner(config, event_file_name)
+            lr.run()
 
 
-def s3_to_event_run_automated(config: S3ToEventConfig, params: S3ToEventParams, s3_to_event: BaseS3ToEvent) -> None:
+def s3_to_event_run_automated(config: S3ToEventConfig, params: S3ToEventParams, s3_to_event: BaseS3ToEvent,
+                              dry_run=False) -> None:
     logger.info(f"App config: {repr(config)}")
 
-    last_files_to_process = 0
+    files_to_process = s3_to_event.get_files_to_process()
+
+    while len(files_to_process) > 0:
+        event = s3_to_event.transform_to_event(files_to_process[:params.limit])
+        logger.info(f"Generated event")
+
+        event_file_name = os.path.join(config.data_path, f's3_event_{config.env}.json')
+        with open(event_file_name, 'w') as f:
+            f.write(json.dumps(event))
+        logger.info(f"Event saved to {event_file_name}")
+
+        if dry_run:
+            logger.info(f"Dry run, skipping actions")
+            return
+        else:
+            num_last_files_to_process = len(files_to_process)
+
+            lr = LambdaRunner(config, event_file_name)
+            lr.run()
+
+            while len(files_to_process) > 0:
+                logger.info(f"Files to process: {len(files_to_process)}, sleeping ...")
+                time.sleep(10)
+
+                files_to_process = s3_to_event.get_files_to_process()
+                if len(files_to_process) == num_last_files_to_process - params.limit:
+                    logger.info(f"Files to process: {len(files_to_process)}, waking up")
+                    break
