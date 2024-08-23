@@ -22,6 +22,12 @@ ROLE_ARNS = {
     },
 }
 
+GLUE_ARNS = {
+    "default": "arn:aws:iam::199480941921:role/sds-dev-common-store-glue-crawler-role",
+    "dev": "arn:aws:iam::199480941921:role/sds-dev-common-store-glue-crawler-role",
+    "prod": "arn:aws:iam::488115367344:role/sds-prod-common-store-glue-crawler-role"
+}
+
 HOME_PATH = os.path.expanduser(os.getenv('USERPROFILE')).replace("\\", "/")
 SAML_ASSERT_FILE_NAME = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/saml-assert.txt")).replace("\\", "/")
 CREDENTIALS_FILE_NAME = f"{HOME_PATH}/.aws/credentials"
@@ -32,6 +38,7 @@ def get_credentials_section(section_name: str, obj: dict) -> list[str]:
     credentials.append(f"aws_access_key_id = {obj['AccessKeyId']}")
     credentials.append(f"aws_secret_access_key = {obj['SecretAccessKey']}")
     credentials.append(f"aws_session_token = {obj['SessionToken']}")
+    credentials.append(f"glue_iam_role = {GLUE_ARNS[section_name]}")
 
     return credentials
 
