@@ -1,3 +1,13 @@
+"""
+Script Name: saml2aws
+Author: Roman
+Date: <Date>
+Description: Retrieves temporary credentials from AWS SAML response and saves it locally
+Parameters: None
+Input: "saml-assert.txt" file with SAML response
+Output: {user profile}/.aws/credentials
+"""
+
 from subprocess import run
 import json
 import os
