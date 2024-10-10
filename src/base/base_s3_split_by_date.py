@@ -13,12 +13,14 @@ class S3SplitByDateConfig(BaseConfig):
 
 
 class S3SplitByDateParams(BaseParams):
-    def __init__(self, env: str, dry_run: bool, bucket: str, source_key: str, target_key: str, date_regexp: str):
+    def __init__(self, env: str, dry_run: bool, bucket: str, source_key: str, target_key: str, date_regexp: str, date_format: str = '%Y-%m-%d', date_shift: int=0):
         super().__init__(env, dry_run)
         self.bucket = bucket
         self.source_key = source_key
         self.target_key = target_key
         self.date_regexp = date_regexp
+        self.date_format = date_format
+        self.date_shift = date_shift
 
 
 class BaseS3SplitByDate:
@@ -47,9 +49,13 @@ class BaseS3SplitByDate:
         for file in files:
             file_path = file['Key']
             file_name = file_path.split('/')[-1]
+            logger.debug(f"Processing file {file_name}")
             match = re.search(self.params.date_regexp, file_name)
             if match is not None:
-                date = datetime.datetime.strptime(match.group(0), '%Y-%m-%d')
+                logger.debug(f"Converting {match.group(0)} to date with format {self.params.date_format}")
+                date = datetime.datetime.strptime(match.group(0), self.params.date_format)
+                if self.params.date_shift != 0:
+                    date = date + datetime.timedelta(days=self.params.date_shift)
                 target_file_path = f"{self.params.target_key}/year={date.year}/month={date.month:02d}/day={date.day:02d}/{file_name}"
                 if not self.file_exists(self.params.bucket.format(self.config.env), target_file_path):
                     result.append((file_path, target_file_path))
