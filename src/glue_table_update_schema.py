@@ -1,3 +1,25 @@
+"""
+Script name: glue_table_update_schema
+
+Description:
+This script updates Glue table schema via creating and running a temporary crawler
+
+Parameters:
+    - env: Profile name (sds_dev, sds_prod, etc.)
+    - database_name: Database name
+    - table_name: Table name
+
+Dependencies:
+    boto3
+
+Usage example:
+    python src/glue_table_update_schema.py dev "sds_{}_rent_gg_dwh_current" ym_fct_fleet_ra_bound
+
+Date:
+    Oct 14, 2024
+"""
+
+
 import argparse
 from time import sleep
 from base.cfg import BaseConfig
