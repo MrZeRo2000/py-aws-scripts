@@ -8,7 +8,7 @@ class BaseConfig(ABC):
 
     def __init__(self, env):
         self.env = env
-        self.session = boto3.session.Session(profile_name=env)
+        self.session = boto3.session.Session(profile_name=env, region_name=BaseConfig.REGION)
         self._s3 = self.session.client('s3')
         self._data_path = os.path.join(os.path.dirname(__file__), "../../data/")
 
