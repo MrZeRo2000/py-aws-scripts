@@ -45,14 +45,17 @@ class GlueTableSchemaUpdater:
             "Name": name,
             "Role": GlueTableSchemaUpdater.GLUE_ROLE_NAME_TEMPLATE.format(self.cfg.env),
             "Targets": {
-                "S3Targets": [
+                "CatalogTargets": [
                     {
-                        "Path": table_info['Location'],
-                    },
+                        'DatabaseName': self.database_name,
+                        'Tables': [
+                            self.table_name,
+                        ]
+                    }
                 ]
             },
             "SchemaChangePolicy": {
-                "DeleteBehavior": "DEPRECATE_IN_DATABASE",
+                "DeleteBehavior": "LOG",
                 "UpdateBehavior": "UPDATE_IN_DATABASE"
             }
         }
