@@ -5,3 +5,4 @@ aws-glue-sessions
 pyarrow
 awswrangler
 sqlglot
+tzdata
