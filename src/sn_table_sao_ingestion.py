@@ -202,14 +202,18 @@ if __name__ == "__main__":
     sn_config = SNConfig(sn_secret_name)
     reader = SNReader(endpoint_url=sn_config.url, user_name=sn_config.user_name, password=sn_config.password)
     writer = SNWriter(s3_output_file_location)
-    writer.prepare()
-    logger.info(f"Prepared {s3_output_file_location} for writing")
 
     for read_rows in reader.read():
+        # read
         transformed_rows = SNTransformer.transform_to_list(read_rows)
         logger.info(f"Transformed {len(transformed_rows)} rows")
 
+        # transform
         transformed_df = SNTransformer.transform_to_pd(transformed_rows)
+
+        # write
+        writer.prepare()
+        logger.info(f"Prepared {s3_output_file_location} for writing")
         writer.write_to_bucket(transformed_df)
         logger.info(f"Wrote {len(transformed_df)} rows to bucket")
 
