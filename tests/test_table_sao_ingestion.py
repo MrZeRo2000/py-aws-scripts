@@ -60,7 +60,7 @@ def test_transform_full():
             }
         }]
     output_data =         [
-            'start,end,type,service_offering,service_commitment,absolute_downtime,scheduled_downtime,scheduled_availability',
+            'start,end,type,service_offering,service_commitment,allowed_downtime,scheduled_downtime,scheduled_availability',
             '30.08.2024 20:00:00,31.08.2024 20:00:00,Daily,Counter Service - CC 42874,Counter Service Availability - CC 42874,426,426,99.34259',
             '30.07.2024 20:00:00,31.07.2024 20:00:00,Daily,Counter Service - CC 42874,Counter Service Availability - CC 42874,463,463,99.28549'
         ]

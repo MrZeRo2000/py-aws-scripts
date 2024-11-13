@@ -114,7 +114,7 @@ class SNTransformer:
         'type',
         'service_offering',
         'service_commitment',
-        'absolute_downtime',
+        'allowed_downtime',
         'scheduled_downtime',
         'scheduled_availability'
     ]
@@ -161,7 +161,13 @@ class SNTransformer:
 
     @staticmethod
     def transform_to_pd(lst: list) -> pd.DataFrame:
-        return pd.DataFrame(lst)
+        df = pd.DataFrame(lst).astype(str)
+        df = df.astype({
+            'allowed_downtime': 'int64',
+            'scheduled_downtime': 'int64',
+            'scheduled_availability': 'float64',
+        })
+        return df
 
     @staticmethod
     def transform(rows: list) -> pd.DataFrame:
@@ -192,7 +198,6 @@ if __name__ == "__main__":
                               ])
     sn_secret_name = args['sn_secret_name']
     s3_output_file_location = args['s3_output_file_location']
-    logger.info(f"Starting with secret {sn_secret_name}, bucket {s3_output_file_location}")
 
     sn_config = SNConfig(sn_secret_name)
     reader = SNReader(endpoint_url=sn_config.url, user_name=sn_config.user_name, password=sn_config.password)
