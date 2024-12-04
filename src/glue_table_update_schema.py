@@ -31,12 +31,13 @@ class GlueTableSchemaUpdater:
     CRAWLER_NAME_TEMPLATE = "temp_{}_{}_crawler"
     GLUE_ROLE_NAME_TEMPLATE = "sds-{}-common-store-glue-crawler-role"
 
-    def __init__(self, cfg: BaseConfig, database_name:str, table_name: str):
+    def __init__(self, cfg:BaseConfig, database_name:str, table_name:str, s3_path:str):
         self.cfg = cfg
         self.session = cfg.session
         self.glue = self.session.client('glue')
         self.database_name = database_name
         self.table_name = table_name
+        self.s3_path = s3_path
 
     def get_crawlers(self) -> list[str]:
         crawlers = []
@@ -59,8 +60,6 @@ class GlueTableSchemaUpdater:
         return {'Location': response['Table']['StorageDescriptor']['Location']}
 
     def create_crawler(self, name: str):
-        table_info = self.get_table_info()
-        logger.debug(f"Got table information: {table_info}")
 
         crawler_params = {
             "DatabaseName": self.database_name,
@@ -81,6 +80,18 @@ class GlueTableSchemaUpdater:
                 "UpdateBehavior": "UPDATE_IN_DATABASE"
             }
         }
+        try:
+            table_info = self.get_table_info()
+            logger.debug(f"Got table information: {table_info}")
+        except self.glue.exceptions.EntityNotFoundException:
+            logger.debug("Table not found, switching to S3 crawler")
+            crawler_params["Targets"] = {
+                'S3Targets': [
+                    {
+                        'Path': self.s3_path
+                    }
+                ]
+            }
 
         self.glue.create_crawler(**crawler_params)
         logger.info(f"Crawler {name} created")
@@ -139,9 +150,10 @@ if __name__ == '__main__':
     parser.add_argument('env')
     parser.add_argument('database_name')
     parser.add_argument('table_name')
+    parser.add_argument('-s3', '--s3_path')
 
     args = parser.parse_args()
     logger.info(f'Starting updating schema with args: {args}')
 
     config = BaseConfig(args.env)
-    GlueTableSchemaUpdater(config, args.database_name.format(args.env), args.table_name)()
+    GlueTableSchemaUpdater(config, args.database_name.format(args.env), args.table_name, args.s3_path)()
