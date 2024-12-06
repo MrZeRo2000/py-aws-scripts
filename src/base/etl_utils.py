@@ -3,7 +3,7 @@ Script Name: etl_utils
 Author: Roman
 Date: Sep 06 2024
 
-Description: Generates .inc file contents for Athena ETL tool
+Description: Generates .inc file contents for Athena ETL tool and JINJA template
 
 Parameters:
      --use_athena (optional): boolean, default False, runs Athena Query to retrieve field named from SQL,
@@ -15,6 +15,7 @@ Output: "etl.inc" with fields
 
 
 import os
+import re
 from typing import List
 import argparse
 import awswrangler as wr
@@ -25,6 +26,8 @@ import sqlglot.expressions as exp
 
 SELECT_FILE_NAME = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/select.sql")).replace("\\", "/")
 ETL_FILE_NAME = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/etl.inc")).replace("\\", "/")
+JINJA_FILE_NAME = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/jinja.inc")).replace("\\", "/")
+JINJA_SQL_FILE_NAME = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../data/jinja.sql")).replace("\\", "/")
 
 
 def read_sql() -> str:
@@ -65,8 +68,19 @@ def write_etl_configuration(column_names):
         f.write(data_fields + '\n')
         f.write(b_data_fields + '\n')
         f.write(array_hash_fields + '\n')
-
     print(f"ETL configuration saved to {ETL_FILE_NAME}")
+
+    jinja_column_names = [f"'{c.upper()}'" for c in column_names]
+    jinja_data_fields = f"{{%- set DATA_FIELDS=[{','.join(jinja_column_names)}] -%}}"
+    with open(JINJA_FILE_NAME, "w+") as f:
+        f.write(jinja_data_fields + '\n')
+    print(f"JINJA configuration saved to {JINJA_FILE_NAME}")
+
+def write_jinja_sql(sql: str):
+    jinja_sql = re.sub('"*\w+_shop"*."*(\w+)"*', '{{ ref("\g<1>")}}', sql)
+    with open(JINJA_SQL_FILE_NAME, "w+") as f:
+        f.write(jinja_sql)
+    print(f"JINJA SQL saved to {JINJA_SQL_FILE_NAME}")
 
 
 if __name__ == '__main__':
@@ -82,3 +96,4 @@ if __name__ == '__main__':
     etl_sql = read_sql()
     etl_column_names = parser(etl_sql)
     write_etl_configuration(etl_column_names)
+    write_jinja_sql(etl_sql)
