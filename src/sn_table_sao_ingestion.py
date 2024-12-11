@@ -1,5 +1,6 @@
 import datetime
 import requests
+import os
 import sys
 import logging.config
 import time
@@ -7,6 +8,7 @@ import pandas as pd
 import zoneinfo
 import uuid
 import awswrangler as wr
+from requests import JSONDecodeError
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
@@ -61,7 +63,7 @@ class SNReader:
         "sysparm_display_value": r"false",
         "sysparm_fields": r"start,end,type,service_offering,service_commitment,absolute_downtime,scheduled_downtime,scheduled_availability,display_name",
     }
-    ENDPOINT_ROWS_LIMIT = 50000
+    ENDPOINT_ROWS_LIMIT = 10000
 
     def __init__(self, endpoint_url, user_name: str, password: str):
         self.endpoint_url = endpoint_url
@@ -95,16 +97,34 @@ class SNReader:
                 end_time = time.time()
                 logger.info(f"Reading from ServiceNow completed in {(end_time - start_time):.2f} seconds")
 
+                log_path = os.path.join(os.path.dirname(__file__), "../log/")
+                if os.path.exists(log_path):
+                    timestamp_str = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+                    with open(os.path.join(log_path, f"sn_table_sao_response_{timestamp_str}.log"), "w") as rf:
+                        rf.write(response.text)
+
                 response.raise_for_status()
 
-                response_json = response.json()
+                try:
+                    response_json = response.json()
+                except JSONDecodeError as e:
+                    logger.error(f"Response is not a valid JSON: {e}")
+                    raise
+
+                if 'error' in response_json:
+                    logger.error(f"Error in data response: {response_json['error']}")
+                    raise ValueError(f"Error in data response from ServiceNow, see log for details")
                 if 'result' not in response_json or len(response_json['result']) == 0:
                     logger.info("No data read, exiting")
                     break
                 else:
                     response_result = response_json['result']
-                    offset += len(response_result)
-                    yield response_result
+                    if isinstance(response_result, list):
+                        offset += len(response_result)
+                        yield response_result
+                    else:
+                        logger.error(f"Response result is not a list: {str(response_result)}, full response: {response_json}")
+                        raise ValueError(f"Response result is invalid, see log for details")
 
 class SNTransformer:
     CSV_SEPARATOR = ','
