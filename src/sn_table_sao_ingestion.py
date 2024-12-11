@@ -8,7 +8,6 @@ import pandas as pd
 import zoneinfo
 import uuid
 import awswrangler as wr
-from requests import JSONDecodeError
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
@@ -107,7 +106,7 @@ class SNReader:
 
                 try:
                     response_json = response.json()
-                except JSONDecodeError as e:
+                except ValueError as e:
                     logger.error(f"Response is not a valid JSON: {e}")
                     raise
 
