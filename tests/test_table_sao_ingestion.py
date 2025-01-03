@@ -1,7 +1,7 @@
 import pytest
 import os
 
-from src.sn_table_sao_ingestion import SNTransformer
+from sn_table_sao_ingestion_job import SNTransformer
 
 
 @pytest.mark.parametrize(
