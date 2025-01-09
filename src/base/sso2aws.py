@@ -23,6 +23,7 @@ def read_sso_file() -> list[str]:
 
 def transform_lines(lines: list[str]) -> list[str]:
     result = []
+    default_line_number = -1
 
     for line in lines:
         env = next((vl for v in line.split('-') if (vl := v.lower()) in ENVS), None)
@@ -31,6 +32,17 @@ def transform_lines(lines: list[str]) -> list[str]:
         else:
             print(f"Found {env}")
             result.append(f"[{env}]\n")
+            if env == 'dev':
+                default_line_number = len(result)
+
+    # generate default from dev
+    if default_line_number > -1:
+        result.extend([
+            '\n',
+            '\n',
+            '[default]\n',
+        ])
+        result.extend(result[default_line_number:default_line_number + 4])
 
     return result
 
