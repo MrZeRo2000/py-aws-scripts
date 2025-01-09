@@ -39,7 +39,7 @@ common.logger = logger
 ENDPOINT_TABLE_NAME = 'cmdb_ci_outage'
 
 ENDPOINT_DEFAULT_PARAMS = {
-    "sysparm_query": r"ORDERBYsys_created_on^cmdb_ci.ref_service_offering.parentDYNAMIC4942c2a09390821836e475518bba10d6%5EORcmdb_ciDYNAMIC899e2966c38e56103eb36420a0013154%5EORtype%3Dplanned%5EORu_affected_servicesISNOTEMPTY",
+    "sysparm_query": r"cmdb_ci.ref_service_offering.parentDYNAMIC4942c2a09390821836e475518bba10d6^ORcmdb_ciDYNAMIC899e2966c38e56103eb36420a0013154^ORtype=planned^ORu_affected_servicesISNOTEMPTY^sys_updated_onONToday@javascript:gs.beginningOfToday()@javascript:gs.endOfToday()^ORsys_updated_onONYesterday@javascript:gs.beginningOfYesterday()@javascript:gs.endOfYesterday()",
     "sysparm_display_value": r"true",
     "sysparm_exclude_reference_link": r"true",
     "sysparm_fields": r"number,cmdb_ci,begin,end,duration,task_number,short_description,type,u_custom_export_fields,u_affected_services",
@@ -82,8 +82,8 @@ class SNTransformer:
                 SNTransformer.CSV_COLUMNS[0]: r["number"],
                 SNTransformer.CSV_COLUMNS[1]: r["cmdb_ci"],
                 SNTransformer.CSV_COLUMNS[2]: r["type"],
-                SNTransformer.CSV_COLUMNS[3]: SNTransformer.convert_date_str(r["begin"]),
-                SNTransformer.CSV_COLUMNS[4]: SNTransformer.convert_date_str(r["end"]),
+                SNTransformer.CSV_COLUMNS[3]: SNTransformer.convert_date_str(r["begin"]) if r["begin"] != "" else "",
+                SNTransformer.CSV_COLUMNS[4]: SNTransformer.convert_date_str(r["end"]) if r["end"] != "" else "",
                 SNTransformer.CSV_COLUMNS[5]: r["task_number"],
                 SNTransformer.CSV_COLUMNS[6]: u["task_number.cmdb_ci"],
                 SNTransformer.CSV_COLUMNS[7]: u["task_number.short_description"],

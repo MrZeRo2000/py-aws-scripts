@@ -51,7 +51,7 @@ class SNReader:
 
     def read(self) -> Generator[list, None, None]:
         with SNReader.get_session(self) as session:
-            offset = 1
+            offset = 0
             while True:
                 cycle_params = {
                     "sysparm_limit": self._endpoint_rows_limit,
