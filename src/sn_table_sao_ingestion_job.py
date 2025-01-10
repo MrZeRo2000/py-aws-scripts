@@ -117,7 +117,7 @@ class SNTransformer:
 
 if __name__ == "__main__":
     args = getResolvedOptions(sys.argv,
-                              ['JOB_NAME',
+                              [
                                'sn_secret_name',
                                's3_output_file_location'
                               ])
