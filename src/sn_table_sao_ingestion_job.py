@@ -1,38 +1,11 @@
 import datetime
-import logging.config
 import sys
 import zoneinfo
 import pandas as pd
-
 import sn_table_common_ingestion as common
 from awsglue.utils import getResolvedOptions
 
-# Logging
-LOGGING_CONFIG = {
-    "version": 1,
-    "formatters": {
-        "human": {
-            "class": "logging.Formatter",
-            "format": "%(asctime)s:[%(levelname)s:%(lineno)d]: %(message)s"
-        }
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "level": "INFO",
-            "formatter": "human"
-        }
-    },
-    "root": {
-        "level": "INFO",
-        "handlers": ["console"]
-    },
-}
-
-# Load logging config
-logging.config.dictConfig(LOGGING_CONFIG)
-
-logger = logging.getLogger(__name__)
+logger = common.get_logger(__name__)
 common.logger = logger
 
 ENDPOINT_TABLE_NAME = 'service_availability'
@@ -119,10 +92,12 @@ if __name__ == "__main__":
     args = getResolvedOptions(sys.argv,
                               [
                                'sn_secret_name',
-                               's3_output_file_location'
+                               's3_output_file_location',
+                                'e_mail_sns_topic'
                               ])
     sn_secret_name = args['sn_secret_name']
     s3_output_file_location = args['s3_output_file_location']
+    e_mail_sns_topic = args['e_mail_sns_topic']
 
     sn_config = common.SNConfig(sn_secret_name, ENDPOINT_TABLE_NAME)
     reader = common.SNReader(
@@ -135,8 +110,21 @@ if __name__ == "__main__":
     writer.prepare()
     logger.info(f"Prepared {s3_output_file_location} for writing")
 
-    for read_rows in reader.read():
-        # read
+    read_iterator = reader.read()
+    while True:
+        try:
+            read_rows = next(read_iterator)
+        except StopIteration:
+            break
+        except Exception as e:
+            logger.error(f"Exception while reading rows from API: {e}")
+            common.send_e_mail_notification(
+                e_mail_sns_topic,
+                sn_config.error_notification_list,
+                f"Exception while reading rows from API: {e}",
+                ENDPOINT_TABLE_NAME)
+            raise
+
         transformed_rows = SNTransformer.transform_to_list(read_rows)
         logger.info(f"Transformed {len(transformed_rows)} rows")
 

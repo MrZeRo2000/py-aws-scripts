@@ -1,16 +1,70 @@
 import datetime
 import time
 import awswrangler as wr
+import boto3
 import uuid
 import pandas as pd
 import requests
+import logging.config
+import json
 from typing import Generator
 from requests.auth import HTTPBasicAuth
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
+
+def get_logger(name: str) -> logging.Logger:
+    # Logging
+    LOGGING_CONFIG = {
+        "version": 1,
+        "formatters": {
+            "human": {
+                "class": "logging.Formatter",
+                "format": "%(asctime)s:[%(levelname)s:%(lineno)d]: %(message)s"
+            }
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "level": "INFO",
+                "formatter": "human"
+            }
+        },
+        "root": {
+            "level": "INFO",
+            "handlers": ["console"]
+        },
+    }
+
+    # Load logging config
+    logging.config.dictConfig(LOGGING_CONFIG)
+
+    return logging.getLogger(name)
+
 global logger
 
+def send_e_mail_notification(sns_email_topic_arn: str, e_mail_addresses: list, message_body: str, table_name: str):
+    if not e_mail_addresses:
+        return
+
+    sns_client = boto3.client('sns')
+    for e_mail in e_mail_addresses:
+        logger.info(f"Sending e-mail to {e_mail}")
+
+        message = {
+            "body": message_body,
+            "subject": "ERROR: API call for table: " + table_name,
+            "to": e_mail,
+            "topic": "DataShop: ServiceNow API Call",
+            "extra": {
+                "date": datetime.datetime.now().strftime('%Y.%m.%d %H:%M:%S')
+            }
+        }
+
+        sns_client.publish(
+            TargetArn=sns_email_topic_arn, #type: ignore
+            Message=json.dumps(message)
+        )
 
 class SNConfig:
     def __init__(self, secret_name: str, table_name: str):
@@ -28,6 +82,10 @@ class SNConfig:
     @property
     def password(self):
         return self.secret["password"]
+
+    @property
+    def error_notification_list(self):
+        return self.secret["error_notification_list"]
 
 
 class SNReader:

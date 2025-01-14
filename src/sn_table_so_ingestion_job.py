@@ -1,37 +1,10 @@
-import logging.config
 import sys
-
 import pandas as pd
 
 import sn_table_common_ingestion as common
 from awsglue.utils import getResolvedOptions
 
-# Logging
-LOGGING_CONFIG = {
-    "version": 1,
-    "formatters": {
-        "human": {
-            "class": "logging.Formatter",
-            "format": "%(asctime)s:[%(levelname)s:%(lineno)d]: %(message)s"
-        }
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "level": "INFO",
-            "formatter": "human"
-        }
-    },
-    "root": {
-        "level": "INFO",
-        "handlers": ["console"]
-    },
-}
-
-# Load logging config
-logging.config.dictConfig(LOGGING_CONFIG)
-
-logger = logging.getLogger(__name__)
+logger = common.get_logger(__name__)
 common.logger = logger
 
 ENDPOINT_TABLE_NAME = 'service_offering'
