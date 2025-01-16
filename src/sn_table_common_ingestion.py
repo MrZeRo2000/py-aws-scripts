@@ -117,9 +117,13 @@ class SNReader:
                 }
                 request_params = {**self._endpoint_default_params, **cycle_params}
 
-                logger.info(f"Reading from ServiceNow {self.endpoint_url} with params: {request_params}")
+                # encode params manually: avoid standard url encoding because of ServiceNow API specifics
+                encoded_request_params = "&".join([f"{k}={v}" for k, v in request_params.items()])
+                url = f"{self.endpoint_url}?{encoded_request_params}"
+
+                logger.info(f"Reading from ServiceNow with offset: {offset}, limit: {self._endpoint_rows_limit}, url: {url}")
                 start_time = time.time()
-                response = session.get(self.endpoint_url, params=request_params)
+                response = session.get(url)
                 end_time = time.time()
                 logger.info(f"Reading from ServiceNow completed in {(end_time - start_time):.2f} seconds")
 
