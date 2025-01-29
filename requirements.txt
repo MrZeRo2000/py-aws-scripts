@@ -6,3 +6,4 @@ pyarrow
 awswrangler
 sqlglot
 tzdata
+eralchemy[graphviz]
