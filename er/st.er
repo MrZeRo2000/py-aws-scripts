@@ -1,0 +1,52 @@
+[st_dim_support_ticket_complaints]
+    *stcp_id {label:"bigint"}
+    stcp_category_id {label:"string"}
+    stcp_category_text {label:"string"}
+    stcp_sub_category_text {label:"string"}
+[st_dim_support_ticket_complaint_reasons]
+    *stcr_id {label:"string"}
+    stcr_reason_text {label:"string"}
+    stcr_booking_states {label:"string"}
+[st_fct_support_tickets]
+    *stst_id {label:"string"}
+    stst_owner_id {label:"string"}
+    stst_owner_type {label:"string"}
+    stst_escalation_level {label:"string"}
+    stst_customer_escalation {label:"string"}
+    stst_complaint_reason_id {label:"string"}
+    stst_status_history_id {label:"string"}
+    stst_contact_name {label:"string"}
+    stst_source {label:"string"}
+    stst_booking_details_booking_id {label:"string"}
+    stst_booking_details_reservation_number {label:"string"}
+    stst_booking_details_rental_agreement_number {label:"string"}
+    stst_booking_details_booking_type {label:"string"}
+    stst_customer_mandant_no {label:"int"}
+    stst_origin_mandant_no {label:"int"}
+    stst_pickup_branch_id {label:"int"}
+    stst_return_branch_id {label:"int"}
+    stst_version {label:"int"}
+    stst_tag {label:"string"}
+    stst_priority {label:"string"}
+    stst_customer_details_person_id {label:"string"}
+    stst_customer_details_first_name {label:"string"}
+    stst_customer_details_last_name {label:"string"}
+    stst_customer_details_segment {label:"string"}
+    stst_customer_details_email_address {label:"string"}
+    stst_customer_details_mobile_number {label:"string"}
+    stst_comments {label:"string"}
+    stst_complaint_id {label:"string"}
+    stst_customer_feedback_token {label:"string"}
+    stst_customer_feedback_is_customer_given_feedback {label:"string"}
+    stst_subject {label:"string"}
+    stst_source_system {label:"string"}
+[st_fct_support_ticket_status_history]
+    *stsh_id {label:"string"}
+    *stsh_index {label:"int"}
+    stsh_status {label:"string"}
+    stsh_change_datm {label:"timestamp"}
+    stsh_changed_by {label:"string"}
+    stsh_comment {label:"string"}
+st_dim_support_ticket_complaints."stcp_id" 1--* st_fct_support_tickets."stst_complaint_id"
+st_dim_support_ticket_complaint_reasons."stcr_id" 1--* st_fct_support_tickets."stst_complaint_reason_id"
+st_fct_support_ticket_status_history."stsh_id" 1--* st_fct_support_tickets."stst_status_history_id"
