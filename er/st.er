@@ -13,7 +13,7 @@
     stst_owner_type {label:"string"}
     stst_escalation_level {label:"string"}
     stst_customer_escalation {label:"string"}
-    stst_complaint_reason_id {label:"string"}
+    stst_reason_id {label:"string"}
     stst_status_history_id {label:"string"}
     stst_contact_name {label:"string"}
     stst_source {label:"string"}
@@ -48,5 +48,5 @@
     stsh_changed_by {label:"string"}
     stsh_comment {label:"string"}
 st_dim_support_ticket_complaints."stcp_id" 1--* st_fct_support_tickets."stst_complaint_id"
-st_dim_support_ticket_complaint_reasons."stcr_id" 1--* st_fct_support_tickets."stst_complaint_reason_id"
+st_dim_support_ticket_complaint_reasons."stcr_id" 1--* st_fct_support_tickets."stst_reason_id"
 st_fct_support_ticket_status_history."stsh_id" 1--* st_fct_support_tickets."stst_status_history_id"
