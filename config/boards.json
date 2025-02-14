@@ -1,0 +1,70 @@
+{
+  "boards": [
+    {
+      "board_id": "3505",
+      "board_name": "RATS",
+      "is_kanban": true,
+      "limit": 50,
+      "excluded_task_types": [
+        "Epic",
+        "Sub-task",
+        "Experiment",
+        "Test",
+        "Incident"
+      ]
+    },
+    {
+      "board_id": "13182",
+      "board_name": "PIE",
+      "limit": 50,
+      "is_kanban": true,
+      "excluded_task_types": [
+        "Epic",
+        "Sub-task",
+        "Experiment",
+        "Test",
+        "Incident"
+      ]
+    },
+    {
+      "board_id": "12874",
+      "board_name": "GOLF",
+      "limit": 50,
+      "is_kanban": true,
+      "excluded_task_types": [
+        "Epic",
+        "Sub-task",
+        "Experiment",
+        "Test",
+        "Incident"
+      ]
+    },
+    {
+      "board_id": "5084",
+      "board_name": "BCDC",
+      "is_kanban": true,
+      "limit": 50,
+      "excluded_task_types": [
+        "Epic",
+        "Sub-task",
+        "Experiment",
+        "Test",
+        "Incident"
+      ]
+    },
+    {
+      "board_id": "3526",
+      "board_name": "RDRI",
+      "limit": 50,
+      "is_kanban": true,
+      "excluded_task_types": [
+        "Epic",
+        "Sub-task",
+        "Experiment",
+        "Test",
+        "Incident",
+        "Story"
+      ]
+    }
+  ]
+}

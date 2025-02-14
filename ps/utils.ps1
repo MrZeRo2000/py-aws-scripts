@@ -6,3 +6,6 @@ aws dynamodb update-item --table-name sds-prod-common-security-TablesMetadata --
 
 # get athena query by id
 aws athena get-query-execution --query-execution-id 2469525a-3c8a-4858-b7c3-6916965ab1d9 --profile prod --region eu-west-1
+
+# sso
+./venv/Scripts/python.exe src/base/sso2aws.py

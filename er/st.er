@@ -9,6 +9,7 @@
     stcr_booking_states {label:"string"}
 [st_fct_support_tickets]
     *stst_id {label:"string"}
+    *stst_event_id {label:"int"}
     stst_owner_id {label:"string"}
     stst_owner_type {label:"string"}
     stst_escalation_level {label:"string"}
