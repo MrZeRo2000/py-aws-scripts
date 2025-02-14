@@ -37,12 +37,20 @@ def transform_lines(lines: list[str]) -> list[str]:
 
     # generate default from dev
     if default_line_number > -1:
+        default_result = result[default_line_number:default_line_number + 4]
         result.extend([
             '\n',
             '\n',
             '[default]\n',
         ])
-        result.extend(result[default_line_number:default_line_number + 4])
+        result.extend(default_result)
+        result.extend([
+            '\n',
+            '\n',
+            '[sds-dev]\n',
+        ])
+        result.extend(default_result)
+
 
     return result
 
