@@ -56,7 +56,7 @@ class BoardsConfig:
 class JSMConfig:
     BOARDS_FILE_NAME = "boards.json"
 
-    def __init__(self, secret_name: str):
+    def __init__(self, secret_name: str, raw_location: str, output_location: str):
         if secret_name.startswith("sds"):
             self._api_key = wr.secretsmanager.get_secret(secret_name)
         else:
@@ -86,10 +86,13 @@ class JSMConfig:
 
 
 class APIDataLoader:
+    DOMAIN_NAME = "https://jira.sixt.com"
+
     def __init__(self, api_key: str):
         self._api_key = api_key
+        self._session = None
 
-    def get_session(self) -> requests.Session:
+    def obtain_session(self) -> requests.Session:
         session = requests.Session()
 
         session.headers.update({
@@ -105,6 +108,26 @@ class APIDataLoader:
 
         return session
 
+    @property
+    def session(self) -> requests.Session:
+        if self._session is None:
+            self._session = self.obtain_session()
+        return self._session
+
+    def fetch_sprints_for_boards(self, boards: list[Board]) -> list:
+        sprints = []
+        for board in boards:
+            start_at = 0
+            while True:
+                url = f"{APIDataLoader.DOMAIN_NAME}/rest/agile/1.0/board/{board.board_id}/sprint"
+
+        return sprints
+
+
+class BoardDataLoader:
+    def __init__(self, board: Board):
+        self._board = board
+
 
 if __name__ == "__main__":
     args = getResolvedOptions(sys.argv,[
@@ -116,4 +139,4 @@ if __name__ == "__main__":
     s3_raw_location = args['s3_raw_location']
     s3_output_location = args['s3_output_location']
 
-    config = JSMConfig(jsm_secret_name)
+    config = JSMConfig(jsm_secret_name, s3_raw_location, s3_output_location)
