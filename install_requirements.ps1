@@ -1,1 +1,1 @@
-& "venv/Scripts/pip.exe" install -r requirements.txt
+Invoke-Expression "venv/Scripts/pip.exe install -r requirements.txt"

@@ -1,1 +1,1 @@
-& python.exe -m venv venv
+Invoke-Expression "python.exe -m venv venv"
