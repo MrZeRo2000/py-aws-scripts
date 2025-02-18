@@ -1,10 +1,14 @@
 import os
 import sys
+from datetime import datetime
 import time
 import logging.config
 import json
 from collections import UserDict
-from typing import Generator
+from functools import cache
+from typing import Generator, Optional
+
+from pydantic import BaseModel, Field
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -67,24 +71,92 @@ class Board:
     limit: int
     excluded_task_types: list[str]
 
-@dataclass
-class Sprint:
+class Sprint(BaseModel):
     id: int
-    self: str
-    state: str
+    board_id: int
+    self: str=None
+    state: str=None
     name: str
-    startDate: str
-    endDate: str
-    completeDate: str
-    activatedDate: str
-    synced: bool
-    autoStartStop: bool
+    start_date: Optional[str] = Field(None, alias="startDate")
+    end_date: Optional[str] = Field(None, alias="endDate")
+    complete_date: Optional[str] = Field(None, alias="completeDate")
+    activated_date: Optional[str] = Field(None, alias="activatedDate")
+    synced: bool=None
+    autoStartStop: bool=None
 
-def from_dict(cls, data: dict):
-    """Initialize a dataclass from a dictionary, ignoring extra fields."""
-    field_names = {f.name for f in fields(cls)}
-    filtered_data = {k: v for k, v in data.items() if k in field_names}
-    return cls(**filtered_data)
+class Status(BaseModel):
+    id: str
+    self: str
+
+class Column(BaseModel):
+    name: str
+    statuses: list[Status]
+
+class BoardFilter(BaseModel):
+    id: str
+
+class ColumnConfiguration(BaseModel):
+    columns: list[Column]
+
+class BoardConfiguration(BaseModel):
+    filter: BoardFilter
+    column_config: ColumnConfiguration=Field(alias="columnConfig")
+
+class HistoryAuthor(BaseModel):
+    display_name: Optional[str] = Field(None, alias="displayName")
+
+class HistoryItem(BaseModel):
+    field: str=None
+    from_string: Optional[str] = Field(None, alias="fromString")
+    to_string: Optional[str] = Field(None, alias="toString")
+    from_value: Optional[str] = Field(None, alias="from")
+    to_value: Optional[str] = Field(None, alias="to")
+
+class History(BaseModel):
+    created: str
+    author: Optional[HistoryAuthor]=None
+    items: list[HistoryItem]=None
+
+class ChangeLog(BaseModel):
+    histories: list[History]
+
+class Named(BaseModel):
+    name: str
+
+class Valued(BaseModel):
+    value: str
+
+class Project(BaseModel):
+    key: str
+
+class Priority(BaseModel):
+    name: str
+    id: str
+
+class Fields(BaseModel):
+    summary: str
+    story_points: Optional[float]=Field(None, alias="customfield_10002")
+    labels: Optional[list[str]]=None
+    components: Optional[list[Named]]=None
+    issue_type: Optional[Named]=Field(None, alias="issuetype")
+    flagged: Optional[bool]=None
+    resolution_date: Optional[str]=Field(None, alias="resolutiondate")
+    resolution: Optional[Named]=None
+    status: Optional[Named]=None
+    environment: Optional[Valued]=Field(None, alias="customfield_11115")
+    created: Optional[str]=None
+    project: Optional[Project]=None
+    epic_key: Optional[str]=Field(None, alias="customfield_10005")
+    epic_name: Optional[str]=Field(None, alias="customfield_10006")
+    priority: Optional[Priority]=None
+    fix_versions: Optional[list[Named]]=Field(None, alias="fixVersions")
+
+class Issue(BaseModel):
+    id: int
+    board_id: int=None
+    key: str
+    fields: Fields
+    change_log: Optional[ChangeLog] = Field(None, alias="changelog")
 
 
 class JSMConfig:
@@ -139,7 +211,7 @@ class APIGetClient:
 
         return session
 
-    def fetch_paged(self, url: str, page_size: int, params: dict=None) -> Generator[list, None, None]:
+    def fetch_paged(self, url: str, page_size: int, data_key: str, params: dict=None) -> Generator[list, None, None]:
         start_at = 0
         api_url = APIGetClient.DOMAIN_NAME + url
 
@@ -171,18 +243,20 @@ class APIGetClient:
 
                 response.raise_for_status()
 
-                if 'values' not in response_json or len(response_json['values']) == 0:
+                if data_key not in response_json or len(response_json[data_key]) == 0:
                     logger.info("No data read, exiting")
                     break
                 else:
-                    response_result = response_json['values']
+                    response_result = response_json[data_key]
                     if isinstance(response_result, list):
+                        logger.info(f"Fetched {len(response_result)} rows")
                         start_at += len(response_result)
                         yield response_result
                     else:
                         logger.error(f"Response result is not a list: {str(response_result)}, full response: {response_json}")
                         raise ValueError(f"Response result is invalid, see log for details")
 
+    @cache
     def fetch_simple(self, url: str, params: dict=None) -> dict:
         api_url = APIGetClient.DOMAIN_NAME + url
 
@@ -219,21 +293,51 @@ class APIDataFetcher:
         sprints = []
 
         url = f"/rest/agile/1.0/board/{board.board_id}/sprint"
-        for board_sprints_data in self.api_client.fetch_paged(url, board.limit):
+        for board_sprints_data in self.api_client.fetch_paged(url, board.limit, 'values'):
             sprints.extend(board_sprints_data)
             pass
 
-        logger.info(f"Fetching sprints for board {board.board_id} completed")
+        logger.info(f"Fetching sprints for board {board.board_id} completed, {len(sprints)} sprints")
         return sprints
 
-    def fetch_board_configuration(self, board: Board) -> tuple[int, list[str]]:
+    def fetch_issues_for_board(self, board: Board, filter_id: str) -> list:
+        logger.info(f"Fetching issues for board: {board.board_id}")
+        issues = []
+
+        quoted_board_names = [f'"{b}"' for b in board.excluded_task_types]
+        params = {
+            'jql': f"filter={filter_id} AND issuetype NOT IN ({','.join(quoted_board_names)}) AND (created >= startOfDay(-365d) OR updated >= startOfDay(-365d))",
+            'fields': 'summary,labels,components,issuetype,resolutiondate,resolution,status,customfield_11115,customfield_10005,customfield_10006,customfield_10002,customfield_12401,created,project,priority,fixVersions',
+            'expand': 'changelog'
+        }
+
+        url = f"/rest/api/2/search"
+        for board_issues_data in self.api_client.fetch_paged(url, board.limit, 'issues', params):
+            issues.extend(board_issues_data)
+            pass
+
+        logger.info(f"Fetching issues for board {board.board_id} completed, {len(issues)} issues")
+        return issues
+
+    @cache
+    def fetch_issue_by_key(self, key: str) -> any:
+        logger.info(f"Fetching issue by key: {key}")
+
+        url = f"/rest/api/2/issue/{key}"
+        issue = self.api_client.fetch_simple(url)
+        logger.info(f"Fetching issue completed")
+
+        return issue
+
+    def fetch_board_configuration(self, board: Board) -> tuple[str, list[Column]]:
         logger.info(f"Fetching board configuration for board: {board.board_id}")
 
         url = f"/rest/agile/1.0/board/{board.board_id}/configuration"
         board_configuration = self.api_client.fetch_simple(url)
 
-        filter_id, columns = (board_configuration['filter']['id'],
-                              [c['name'] for c in board_configuration['columnConfig']['columns']])
+        board_configuration_model = BoardConfiguration.model_validate_json(json.dumps(board_configuration))
+
+        filter_id, columns = board_configuration_model.filter.id, board_configuration_model.column_config.columns
         logger.info(f"Fetching board configuration {board.board_id} completed: filter: {filter_id}, columns: {columns}")
 
         return filter_id, columns
@@ -249,29 +353,39 @@ class APIDataWriter:
             logger.info(f"Preparing S3 location: {self.full_location}")
             wr.s3.delete_objects(self.full_location)
 
-    def write_board(self, board: Board, data: list) -> None:
+    def write_entity(self, entity_name: str, entity_id: str, data: list[BaseModel]) -> None:
+        logger.info(f"Writing entity: {entity_name}, {entity_id}")
+        data_object = {f"{entity_name}s": [d.model_dump() for d in data]}
+
         if self.location.startswith('s3'):
-            logger.info(f"Writing to S3 location: {self.full_location}: board={board.board_id}")
+            logger.info(f"Writing to S3 location: {self.full_location}: {entity_name}={entity_id}")
             bucket = self.location.split('/')[2]
-            key = '/'.join(self.location.split('/')[3:]) + f"boards/{board.board_id}.json"
-            logger.info(f"Writing to S3 location: {self.location}, bucket={bucket}, key={key}: board={board.board_id}")
+            key = '/'.join(self.location.split('/')[3:]) + f"{entity_name}s/{entity_id}.json"
+            logger.info(f"Writing to S3 location: {self.location}, bucket={bucket}, key={key}: {entity_name}={entity_id}")
             aws_services.s3.put_object(
-                Body=json.dumps(data),
+                Body=json.dumps(data_object),
                 Bucket=bucket,
                 Key=key
             )
         else:
-            logger.info(f"Writing to local file: {self.location}: board={board.board_id}")
-            folder_name = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data/board_id={board.board_id}"))
+            logger.info(f"Writing to local file: {self.location}: {entity_name}={entity_id}")
+            folder_name = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data/{entity_name}s"))
             if not os.path.exists(folder_name):
                 os.makedirs(folder_name)
-            with open(f"{os.path.join(folder_name, board.board_name)}.json", "w") as f:
-                f.write(json.dumps(data))
+            with open(f"{os.path.join(folder_name, entity_id)}.json", "w") as f:
+                f.write(json.dumps(data_object))
+        logger.info(f"Writing entity {entity_name} completed.")
 
-class BoardDataLoader:
+    def write_sprints(self, board: Board, data: list[BaseModel]) -> None:
+        self.write_entity('sprint', board.board_id, data)
+
+    def write_issues(self, board: Board, data: list[BaseModel]) -> None:
+        self.write_entity('issue', board.board_id, data)
+
+class SprintDataLoader:
     def __init__(self, api_key: str, location: str):
         self.fetcher = APIDataFetcher(api_key)
-        self.writer = APIDataWriter(location, "boards")
+        self.writer = APIDataWriter(location, "sprints")
 
     def prepare(self):
         self.writer.prepare()
@@ -281,10 +395,35 @@ class BoardDataLoader:
         if len(sprints) == 0:
             logger.error(f"No data for board {board.board_id}, skipping")
         else:
-            self.writer.write_board(board, sprints)
+            sprints_with_board = [{**s, 'board_id': board.board_id} for s in sprints]
+            sprints_model = [Sprint.model_validate_json(json.dumps(d)) for d in sprints_with_board]
+            self.writer.write_sprints(board, sprints_model)
+
+    def fetch_epic_name(self, epic_key: str) -> str:
+        issue = self.fetcher.fetch_issue_by_key(epic_key)
+        issue_model = Issue.model_validate_json(json.dumps(issue))
+        return issue_model.fields.epic_name
+
+    def load_issues(self, board: Board, filter_id: str) -> None:
+        issues = self.fetcher.fetch_issues_for_board(board, filter_id)
+        if len(issues) == 0:
+            logger.error(f"No issues for board {board.board_id}, skipping")
+        else:
+            issues_with_board = [{**s, 'board_id': board.board_id} for s in issues]
+            issues_model = [Issue.model_validate_json(json.dumps(d)) for d in issues_with_board]
+
+            logger.info("Loading epic names")
+            for issue_model in [m for m in issues_model if m.fields.epic_key is not None]:
+                issue_model.fields.epic_name = self.fetch_epic_name(issue_model.fields.epic_key)
+            logger.info("Epic names loaded")
+
+            self.writer.write_issues(board, issues_model)
+
 
     def execute(self, board: Board):
+        self.load_sprints(board)
         board_filter_id, board_columns = self.fetcher.fetch_board_configuration(board)
+        self.load_issues(board, board_filter_id)
         pass
 
 if __name__ == "__main__":
@@ -299,7 +438,7 @@ if __name__ == "__main__":
 
     config = JSMConfig(jsm_secret_name, s3_raw_location, s3_output_location)
 
-    loader = BoardDataLoader(config.api_key, s3_raw_location)
+    loader = SprintDataLoader(config.api_key, s3_raw_location)
     loader.prepare()
     for config_board in config.boards:
         loader.execute(config_board)

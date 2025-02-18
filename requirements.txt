@@ -7,3 +7,4 @@ awswrangler
 sqlglot
 tzdata
 eralchemy[graphviz]
+pydantic
