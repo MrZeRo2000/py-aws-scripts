@@ -139,17 +139,19 @@ class APIGetClient:
 
         return session
 
-    def fetch_paged(self, url: str, page_size: int) -> Generator[list, None, None]:
+    def fetch_paged(self, url: str, page_size: int, params: dict=None) -> Generator[list, None, None]:
         start_at = 0
         api_url = APIGetClient.DOMAIN_NAME + url
 
         with self.obtain_session() as session:
             while True:
                 page_params = {"startAt": start_at, "maxResults": page_size}
-                logger.info(f"Reading from RestAPI with paging: {str(page_params)}, url: {api_url}")
+                request_params = {**({} if params is None else params), **page_params}
+
+                logger.info(f"Reading from RestAPI with params: {str(request_params)}, url: {api_url}")
 
                 start_time = time.time()
-                response = session.get(api_url, params=page_params)
+                response = session.get(api_url, params=request_params)
                 end_time = time.time()
                 logger.info(f"Fetching from Rest API completed in {(end_time - start_time):.2f} seconds")
 
@@ -181,6 +183,32 @@ class APIGetClient:
                         logger.error(f"Response result is not a list: {str(response_result)}, full response: {response_json}")
                         raise ValueError(f"Response result is invalid, see log for details")
 
+    def fetch_simple(self, url: str, params: dict=None) -> dict:
+        api_url = APIGetClient.DOMAIN_NAME + url
+
+        with self.obtain_session() as session:
+            request_params = {} if params is None else params
+            logger.info(f"Reading from RestAPI with params: {str(request_params)}, url: {api_url}")
+
+            start_time = time.time()
+            response = session.get(api_url, params=request_params)
+            end_time = time.time()
+            logger.info(f"Fetching from Rest API completed in {(end_time - start_time):.2f} seconds")
+
+            try:
+                response_json = response.json()
+            except ValueError as e:
+                logger.error(f"Response is not a valid JSON: {e}")
+                raise
+
+            if 'errorMessages' in response_json:
+                logger.error(f"Data fetch errors: {str(response_json['errorMessages'])}")
+                return {}
+
+            response.raise_for_status()
+
+            return response_json
+
 
 class APIDataFetcher:
     def __init__(self, api_key: str):
@@ -197,6 +225,18 @@ class APIDataFetcher:
 
         logger.info(f"Fetching sprints for board {board.board_id} completed")
         return sprints
+
+    def fetch_board_configuration(self, board: Board) -> tuple[int, list[str]]:
+        logger.info(f"Fetching board configuration for board: {board.board_id}")
+
+        url = f"/rest/agile/1.0/board/{board.board_id}/configuration"
+        board_configuration = self.api_client.fetch_simple(url)
+
+        filter_id, columns = (board_configuration['filter']['id'],
+                              [c['name'] for c in board_configuration['columnConfig']['columns']])
+        logger.info(f"Fetching board configuration {board.board_id} completed: filter: {filter_id}, columns: {columns}")
+
+        return filter_id, columns
 
 class APIDataWriter:
     def __init__(self, location: str, folder_name: str):
@@ -236,12 +276,16 @@ class BoardDataLoader:
     def prepare(self):
         self.writer.prepare()
 
-    def execute(self, board: Board):
+    def load_sprints(self, board: Board) -> None:
         sprints = self.fetcher.fetch_sprints_for_board(board)
         if len(sprints) == 0:
             logger.error(f"No data for board {board.board_id}, skipping")
         else:
             self.writer.write_board(board, sprints)
+
+    def execute(self, board: Board):
+        board_filter_id, board_columns = self.fetcher.fetch_board_configuration(board)
+        pass
 
 if __name__ == "__main__":
     args = getResolvedOptions(sys.argv,[
