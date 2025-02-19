@@ -164,6 +164,10 @@ class WorkflowTransition(BaseModel):
     from_date: str
     to_date: Optional[str]
 
+class SprintHistory(BaseModel):
+    history: list[str]=[]
+    active_sprint: str=None
+
 class JSMConfig:
     BOARDS_FILE_NAME = "boards.json"
 
@@ -468,6 +472,16 @@ class IssueTransformer:
             for (i, s) in enumerate(status_history)]
 
         return workflow_history
+
+    def transform_sprints(self) -> SprintHistory:
+        all_sprints = [hi.from_string if s == 'from' else hi.to_string
+                       for h in self.issue.change_log.histories
+                       for hi in h.items if hi.field == 'Sprint'
+                       for s in ['from', 'to']]
+        cleaned_sprints = [s.strip() for s in all_sprints if s is not None]
+        return SprintHistory(
+            history=cleaned_sprints,
+            active_sprint=cleaned_sprints[-1] if len(cleaned_sprints) > 0 else None)
 
 def execute_loader_for_board(board: Board):
     loader.execute(board)

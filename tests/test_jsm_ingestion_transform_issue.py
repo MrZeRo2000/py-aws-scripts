@@ -137,7 +137,37 @@ ISSUE_JSON = '''
             "to": "10023"
           }
         ]
-      }
+      },
+      {
+        "created": "2025-01-29T11:07:18.263+0000",
+        "author": {
+          "display_name": "Raghav Saboo"
+        },
+        "items": [
+          {
+            "field": "Sprint",
+            "fromString": null,
+            "toString": "RDRI 226",
+            "from": null,
+            "to": "30034"
+          }
+        ]
+      },
+      {
+        "created": "2025-02-12T09:38:31.833+0000",
+        "author": {
+          "display_name": "Deepak Dubey"
+        },
+        "items": [
+          {
+            "field": "Sprint",
+            "fromString": "RDRI 226",
+            "toString": "RDRI - 227",
+            "from": "30034",
+            "to": "30124"
+          }
+        ]
+      }            
     ]
   }
 }
@@ -147,12 +177,12 @@ ISSUE_JSON = '''
 def test_check_issue_history(issue: Issue):
     history = issue.change_log.histories
     assert history is not None
-    assert len(history) == 6
+    assert len(history) == 6 + 2
     assert history[0].items[0].field == 'Rank'
     assert history[0].items[0].to_string == 'Ranked higher'
-    assert history[-1].items[-1].field == 'status'
-    assert history[-1].items[-1].from_string == 'In Review'
-    assert history[-1].items[-1].to_string == 'Done'
+    assert history[-3].items[-1].field == 'status'
+    assert history[-3].items[-1].from_string == 'In Review'
+    assert history[-3].items[-1].to_string == 'Done'
 
 @pytest.fixture(scope="module")
 def issue() -> Issue:
@@ -160,8 +190,11 @@ def issue() -> Issue:
     pass
     return Issue.model_validate_json(json.dumps(issue_json))
 
-def test_transform_issue(issue: Issue):
-    transformer = IssueTransformer(issue)
+@pytest.fixture(scope="module")
+def transformer(issue: Issue) -> IssueTransformer:
+    return IssueTransformer(issue)
+
+def test_transform_issue(transformer: IssueTransformer):
     workflow_history = transformer.transform_status_history()
 
     assert workflow_history[0].name == "Backlog"
@@ -171,3 +204,10 @@ def test_transform_issue(issue: Issue):
     assert workflow_history[-1].name == "Done"
     assert workflow_history[-1].from_date == "2025-02-13T10:24:48.620+0000"
     assert workflow_history[-1].to_date is None
+
+def test_transform_sprints(transformer: IssueTransformer):
+    sprint_history = transformer.transform_sprints()
+
+    assert sprint_history.active_sprint == "RDRI - 227"
+    assert "RDRI - 227" in sprint_history.history
+    assert "RDRI 226" in sprint_history.history
