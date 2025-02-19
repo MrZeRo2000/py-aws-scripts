@@ -2,6 +2,7 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+import pandas as pd
 import time
 import logging.config
 import json
@@ -50,6 +51,7 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 logger = get_logger(__name__)
+TIMESTAMP_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
 
 class ServiceDict(UserDict):
     def __init__(self, session):
@@ -167,6 +169,15 @@ class WorkflowTransition(BaseModel):
 class SprintHistory(BaseModel):
     history: list[str]=[]
     active_sprint: str=None
+
+class EPRSprintRecords(BaseModel):
+    edsr_id: int
+    edsr_name: str
+    edsr_start_datm: Optional[datetime]
+    edsr_end_datm: Optional[datetime]
+    edsr_activated_datm: Optional[datetime]
+    edsr_complete_datm: Optional[datetime]
+
 
 class JSMConfig:
     BOARDS_FILE_NAME = "boards.json"
@@ -411,8 +422,10 @@ class APIDataReader:
             with open(file_name, "r", encoding="utf-8") as f:
                 data = f.read()
 
-        json_data = json.loads(data)
-        return [cls.model_validate_json(json.dumps(d)) for d in json_data[f"{entity_name}s"]]
+        json_data = json.loads(data)[f"{entity_name}s"]
+        alias_mapping = {f: cls.model_fields[f].alias for f in cls.model_fields if cls.model_fields[f].alias is not None}
+        json_data_mapped = [{alias_mapping.get(k, k): v for k, v in d.items()} for d in json_data]
+        return [cls.model_validate_json(json.dumps(d)) for d in json_data_mapped]
 
     def read_sprints(self, board: Board) -> list[Sprint]:
         return self.read_entity('sprint', board.board_id, Sprint)
@@ -511,6 +524,32 @@ class IssueTransformer:
             history=cleaned_sprints,
             active_sprint=cleaned_sprints[-1] if len(cleaned_sprints) > 0 else None)
 
+class TransformUtils:
+    @staticmethod
+    def str_to_date_time(s: str) -> Optional[datetime]:
+        try:
+            return datetime.strptime(s, TIMESTAMP_FORMAT) if s is not None else None
+        except ValueError:
+            return None
+
+class BoardPandasTransformer:
+
+    @staticmethod
+    def transform_sprint_records(sprints: list[Sprint]) -> pd.DataFrame:
+        df = pd.DataFrame([
+            EPRSprintRecords(
+                edsr_id=s.id,
+                edsr_name=s.name,
+                edsr_start_datm=TransformUtils.str_to_date_time(s.start_date),
+                edsr_end_datm=TransformUtils.str_to_date_time(s.end_date),
+                edsr_complete_datm=TransformUtils.str_to_date_time(s.complete_date),
+                edsr_activated_datm=TransformUtils.str_to_date_time(s.activated_date)
+            ).model_dump()
+            for s in sprints
+        ])
+        return df
+
+
 class JSMProcessor:
     def __init__(self, jsm_config: JSMConfig):
         self.config = config
@@ -547,6 +586,9 @@ class JSMProcessor:
 
         # board_configuration, sprints, issues = self.load_board(board)
         board_configuration, sprints, issues = self.read_board(board)
+
+        sprint_records = BoardPandasTransformer.transform_sprint_records(sprints)
+        pass
 
         logger.info(f"====== Processing board: {board.board_id} completed ======")
 
