@@ -1,5 +1,6 @@
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import time
 import logging.config
@@ -158,6 +159,10 @@ class Issue(BaseModel):
     fields: Fields
     change_log: Optional[ChangeLog] = Field(None, alias="changelog")
 
+class WorkflowTransition(BaseModel):
+    name: str
+    from_date: str
+    to_date: Optional[str]
 
 class JSMConfig:
     BOARDS_FILE_NAME = "boards.json"
@@ -167,6 +172,8 @@ class JSMConfig:
             self._api_key = wr.secretsmanager.get_secret(secret_name)
         else:
             self._api_key = secret_name
+        self._raw_location = raw_location
+        self._output_location = output_location
 
         cfg_boards_locations = [
             os.path.abspath(os.path.join(os.path.dirname(__file__), f"../config/{JSMConfig.BOARDS_FILE_NAME}")),
@@ -188,6 +195,14 @@ class JSMConfig:
     @property
     def boards(self) -> list[Board]:
         return self._boards
+
+    @property
+    def raw_location(self) -> str:
+        return self._raw_location
+
+    @property
+    def output_location(self) -> str:
+        return self._output_location
 
 class APIGetClient:
     DOMAIN_NAME = "https://jira.sixt.com"
@@ -329,36 +344,31 @@ class APIDataFetcher:
 
         return issue
 
-    def fetch_board_configuration(self, board: Board) -> tuple[str, list[Column]]:
+    def fetch_board_configuration(self, board: Board) -> BoardConfiguration:
         logger.info(f"Fetching board configuration for board: {board.board_id}")
 
         url = f"/rest/agile/1.0/board/{board.board_id}/configuration"
         board_configuration = self.api_client.fetch_simple(url)
-
         board_configuration_model = BoardConfiguration.model_validate_json(json.dumps(board_configuration))
 
-        filter_id, columns = board_configuration_model.filter.id, board_configuration_model.column_config.columns
-        logger.info(f"Fetching board configuration {board.board_id} completed: filter: {filter_id}, columns: {columns}")
-
-        return filter_id, columns
+        logger.info(f"Fetching board configuration {board.board_id} completed: {board_configuration_model}")
+        return board_configuration_model
 
 class APIDataWriter:
-    def __init__(self, location: str, folder_name: str):
+    def __init__(self, location: str):
         self.location = location
-        self.folder_name = folder_name
-        self.full_location = f"{self.location}{self.folder_name}"
 
     def prepare(self):
         if self.location.startswith('s3'):
-            logger.info(f"Preparing S3 location: {self.full_location}")
-            wr.s3.delete_objects(self.full_location)
+            logger.info(f"Preparing S3 location: {self.location}")
+            wr.s3.delete_objects(self.location)
 
     def write_entity(self, entity_name: str, entity_id: str, data: list[BaseModel]) -> None:
         logger.info(f"Writing entity: {entity_name}, {entity_id}")
         data_object = {f"{entity_name}s": [d.model_dump() for d in data]}
 
         if self.location.startswith('s3'):
-            logger.info(f"Writing to S3 location: {self.full_location}: {entity_name}={entity_id}")
+            logger.info(f"Writing to S3 location: {self.location}: {entity_name}: {entity_id}")
             bucket = self.location.split('/')[2]
             key = '/'.join(self.location.split('/')[3:]) + f"{entity_name}s/{entity_id}.json"
             logger.info(f"Writing to S3 location: {self.location}, bucket={bucket}, key={key}: {entity_name}={entity_id}")
@@ -382,10 +392,10 @@ class APIDataWriter:
     def write_issues(self, board: Board, data: list[BaseModel]) -> None:
         self.write_entity('issue', board.board_id, data)
 
-class SprintDataLoader:
-    def __init__(self, api_key: str, location: str):
-        self.fetcher = APIDataFetcher(api_key)
-        self.writer = APIDataWriter(location, "sprints")
+class APIDataLoader:
+    def __init__(self, jsm_config: JSMConfig):
+        self.fetcher = APIDataFetcher(jsm_config.api_key)
+        self.writer = APIDataWriter(jsm_config.raw_location)
 
     def prepare(self):
         self.writer.prepare()
@@ -422,9 +432,45 @@ class SprintDataLoader:
 
     def execute(self, board: Board):
         self.load_sprints(board)
-        board_filter_id, board_columns = self.fetcher.fetch_board_configuration(board)
-        self.load_issues(board, board_filter_id)
+        board_configuration = self.fetcher.fetch_board_configuration(board)
+        self.load_issues(board, board_configuration.filter.id)
         pass
+
+class BoardConfigurationTransformer:
+    def __init__(self, board_configuration: BoardConfiguration):
+        self.board_configuration = board_configuration
+
+    def transform_columns(self) -> dict:
+        return {s.id: c.name for c in self.board_configuration.column_config.columns for s in c.statuses}
+
+@dataclass
+class StatusHistory:
+    created: str
+    from_status: str
+    to_status: str
+
+class IssueTransformer:
+    def __init__(self, issue: Issue):
+        self.issue = issue
+
+    def transform_status_history(self) -> list[WorkflowTransition]:
+        status_history = [StatusHistory(h.created, h1.from_string, h1.to_string)
+                          for h in self.issue.change_log.histories for h1 in h.items
+                          if h1.field == 'status' and h1.from_string != h1.to_string]
+
+        first_status_history = status_history[0]
+        status_history.insert(0, StatusHistory(self.issue.fields.created, "", first_status_history.from_status))
+
+        workflow_history = [WorkflowTransition(
+            name=s.to_status,
+            from_date=s.created,
+            to_date=(status_history[i + 1].created if i < len(status_history) - 1 else None))
+            for (i, s) in enumerate(status_history)]
+
+        return workflow_history
+
+def execute_loader_for_board(board: Board):
+    loader.execute(board)
 
 if __name__ == "__main__":
     args = getResolvedOptions(sys.argv,[
@@ -438,7 +484,14 @@ if __name__ == "__main__":
 
     config = JSMConfig(jsm_secret_name, s3_raw_location, s3_output_location)
 
-    loader = SprintDataLoader(config.api_key, s3_raw_location)
+    loader = APIDataLoader(config)
     loader.prepare()
+
     for config_board in config.boards:
         loader.execute(config_board)
+
+    '''
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        for config_board in config.boards:
+            executor.submit(execute_loader_for_board, config_board)
+    '''
