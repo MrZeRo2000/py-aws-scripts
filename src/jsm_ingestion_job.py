@@ -396,6 +396,30 @@ class APIDataWriter:
     def write_issues(self, board: Board, data: list[BaseModel]) -> None:
         self.write_entity('issue', board.board_id, data)
 
+class APIDataReader:
+    def __init__(self, location: str):
+        self.location = location
+
+    def read_entity(self, entity_name: str, entity_id: str, cls: type[BaseModel]) -> list[BaseModel]:
+        if self.location.startswith('s3'):
+            logger.info(f"Reading from S3 location: {self.location}: {entity_name}: {entity_id}")
+            bucket = self.location.split('/')[2]
+            key = '/'.join(self.location.split('/')[3:]) + f"{entity_name}s/{entity_id}.json"
+            data = aws_services.s3.get_object(Bucket=bucket, Key=key)['Body'].read().decode('utf-8')
+        else:
+            file_name = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data/{entity_name}s/{entity_id}.json"))
+            with open(file_name, "r", encoding="utf-8") as f:
+                data = f.read()
+
+        json_data = json.loads(data)
+        return [cls.model_validate_json(json.dumps(d)) for d in json_data[f"{entity_name}s"]]
+
+    def read_sprints(self, board: Board) -> list[Sprint]:
+        return self.read_entity('sprint', board.board_id, Sprint)
+
+    def read_issues(self, board: Board) -> list[Issue]:
+        return self.read_entity('issue', board.board_id, Issue)
+
 class APIDataLoader:
     def __init__(self, jsm_config: JSMConfig):
         self.fetcher = APIDataFetcher(jsm_config.api_key)
@@ -404,24 +428,29 @@ class APIDataLoader:
     def prepare(self):
         self.writer.prepare()
 
-    def load_sprints(self, board: Board) -> None:
+    def load_sprints(self, board: Board) -> list[Sprint]:
         sprints = self.fetcher.fetch_sprints_for_board(board)
         if len(sprints) == 0:
             logger.error(f"No data for board {board.board_id}, skipping")
+            return []
         else:
             sprints_with_board = [{**s, 'board_id': board.board_id} for s in sprints]
-            sprints_model = [Sprint.model_validate_json(json.dumps(d)) for d in sprints_with_board]
-            self.writer.write_sprints(board, sprints_model)
+            return [Sprint.model_validate_json(json.dumps(d)) for d in sprints_with_board]
+
+    def write_sprints(self, board: Board, sprints: list[Sprint]) -> None:
+        self.writer.write_sprints(board, sprints)
 
     def fetch_epic_name(self, epic_key: str) -> str:
         issue = self.fetcher.fetch_issue_by_key(epic_key)
         issue_model = Issue.model_validate_json(json.dumps(issue))
+
         return issue_model.fields.epic_name
 
-    def load_issues(self, board: Board, filter_id: str) -> None:
+    def load_issues(self, board: Board, filter_id: str) -> list[Issue]:
         issues = self.fetcher.fetch_issues_for_board(board, filter_id)
         if len(issues) == 0:
             logger.error(f"No issues for board {board.board_id}, skipping")
+            return []
         else:
             issues_with_board = [{**s, 'board_id': board.board_id} for s in issues]
             issues_model = [Issue.model_validate_json(json.dumps(d)) for d in issues_with_board]
@@ -431,14 +460,13 @@ class APIDataLoader:
                 issue_model.fields.epic_name = self.fetch_epic_name(issue_model.fields.epic_key)
             logger.info("Epic names loaded")
 
-            self.writer.write_issues(board, issues_model)
+            return issues_model
 
+    def load_configuration(self, board: Board) -> BoardConfiguration:
+        return self.fetcher.fetch_board_configuration(board)
 
-    def execute(self, board: Board):
-        self.load_sprints(board)
-        board_configuration = self.fetcher.fetch_board_configuration(board)
-        self.load_issues(board, board_configuration.filter.id)
-        pass
+    def write_issues(self, board: Board, issues: list[Issue]) -> None:
+            self.writer.write_issues(board, issues)
 
 class BoardConfigurationTransformer:
     def __init__(self, board_configuration: BoardConfiguration):
@@ -483,8 +511,47 @@ class IssueTransformer:
             history=cleaned_sprints,
             active_sprint=cleaned_sprints[-1] if len(cleaned_sprints) > 0 else None)
 
+class JSMProcessor:
+    def __init__(self, jsm_config: JSMConfig):
+        self.config = config
+        self.loader = APIDataLoader(jsm_config)
+
+    def prepare(self):
+        self.loader.prepare()
+
+    def read_board(self, board: Board) -> tuple[BoardConfiguration, list[Sprint], list[Issue]]:
+        reader = APIDataReader(self.config.raw_location)
+        return self.loader.load_configuration(board), reader.read_sprints(board), reader.read_issues(board)
+
+    def load_board(self, board: Board) -> tuple[BoardConfiguration, list[Sprint], list[Issue]]:
+        logger.info("Loading board configuration")
+        board_configuration = self.loader.load_configuration(board)
+        logger.info("Board configuration loaded")
+
+        logger.info("Loading sprints")
+        sprints = self.loader.load_sprints(board)
+        logger.info(f"Sprints loaded : {len(sprints)} sprints")
+        self.loader.write_sprints(board, sprints)
+        logger.info("Sprints raw written")
+
+        logger.info("Loading issues")
+        issues = self.loader.load_issues(board, board_configuration.filter.id)
+        logger.info(f"Issues loaded: {len(issues)} issues")
+        self.loader.write_issues(board, issues)
+        logger.info("Issues raw written")
+
+        return board_configuration, sprints, issues
+
+    def process_board(self, board: Board):
+        logger.info(f"====== Processing board: {board.board_id} ====== ")
+
+        # board_configuration, sprints, issues = self.load_board(board)
+        board_configuration, sprints, issues = self.read_board(board)
+
+        logger.info(f"====== Processing board: {board.board_id} completed ======")
+
 def execute_loader_for_board(board: Board):
-    loader.execute(board)
+    p.process_board(board)
 
 if __name__ == "__main__":
     args = getResolvedOptions(sys.argv,[
@@ -498,14 +565,18 @@ if __name__ == "__main__":
 
     config = JSMConfig(jsm_secret_name, s3_raw_location, s3_output_location)
 
-    loader = APIDataLoader(config)
-    loader.prepare()
+    p = JSMProcessor(config)
+    p.process_board(config.boards[0])
+
+'''
+    p.prepare()
 
     for config_board in config.boards:
-        loader.execute(config_board)
+        p.process_board(config_board)
+'''
 
-    '''
+'''
     with ThreadPoolExecutor(max_workers=4) as executor:
         for config_board in config.boards:
             executor.submit(execute_loader_for_board, config_board)
-    '''
+'''
