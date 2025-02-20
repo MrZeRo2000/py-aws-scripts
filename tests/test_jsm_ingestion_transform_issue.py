@@ -190,12 +190,8 @@ def issue() -> Issue:
     pass
     return Issue.model_validate_json(json.dumps(issue_json))
 
-@pytest.fixture(scope="module")
-def transformer(issue: Issue) -> IssueTransformer:
-    return IssueTransformer(issue)
-
-def test_transform_issue(transformer: IssueTransformer):
-    workflow_history = transformer.transform_status_history()
+def test_transform_issue(issue: Issue):
+    workflow_history = IssueTransformer.transform_status_history(issue)
 
     assert workflow_history[0].name == "Backlog"
     assert workflow_history[0].from_date == "2025-02-13T09:24:30.000+0000"
@@ -205,9 +201,18 @@ def test_transform_issue(transformer: IssueTransformer):
     assert workflow_history[-1].from_date == "2025-02-13T10:24:48.620+0000"
     assert workflow_history[-1].to_date is None
 
-def test_transform_sprints(transformer: IssueTransformer):
-    sprint_history = transformer.transform_sprints()
+def test_transform_sprints(issue: Issue):
+    sprint_history = IssueTransformer.transform_sprints(issue)
 
     assert sprint_history.active_sprint == "RDRI - 227"
-    assert "RDRI - 227" in sprint_history.history
-    assert "RDRI 226" in sprint_history.history
+    assert len(sprint_history.history) == 2
+
+    assert 30034 in sprint_history.history
+    assert 30124 in sprint_history.history
+
+    issue_sprint_history = IssueTransformer.transform_issues_sprints([issue])
+
+    assert issue_sprint_history[0].get(issue.id) is not None
+
+    assert issue_sprint_history[0].get(issue.id).active_sprint == "RDRI - 227"
+    assert len(issue_sprint_history[0].get(issue.id).history) == 2

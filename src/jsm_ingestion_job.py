@@ -167,8 +167,8 @@ class WorkflowTransition(BaseModel):
     to_date: Optional[str]
 
 class SprintHistory(BaseModel):
-    history: list[str]=[]
-    active_sprint: str=None
+    history: list[int]=[]
+    active_sprint: Optional[str]=None
 
 class EPRSprintRecords(BaseModel):
     edsr_id: int
@@ -178,6 +178,9 @@ class EPRSprintRecords(BaseModel):
     edsr_activated_datm: Optional[datetime]
     edsr_complete_datm: Optional[datetime]
 
+class EPRIssueSprints(BaseModel):
+    edsr_id: int
+    edir_id: int
 
 class JSMConfig:
     BOARDS_FILE_NAME = "boards.json"
@@ -380,7 +383,7 @@ class APIDataWriter:
 
     def write_entity(self, entity_name: str, entity_id: str, data: list[BaseModel]) -> None:
         logger.info(f"Writing entity: {entity_name}, {entity_id}")
-        data_object = {f"{entity_name}s": [d.model_dump() for d in data]}
+        data_object = {f"{entity_name}s": [d.model_dump(by_alias=True) for d in data]}
 
         if self.location.startswith('s3'):
             logger.info(f"Writing to S3 location: {self.location}: {entity_name}: {entity_id}")
@@ -423,9 +426,7 @@ class APIDataReader:
                 data = f.read()
 
         json_data = json.loads(data)[f"{entity_name}s"]
-        alias_mapping = {f: cls.model_fields[f].alias for f in cls.model_fields if cls.model_fields[f].alias is not None}
-        json_data_mapped = [{alias_mapping.get(k, k): v for k, v in d.items()} for d in json_data]
-        return [cls.model_validate_json(json.dumps(d)) for d in json_data_mapped]
+        return [cls.model_validate_json(json.dumps(d)) for d in json_data]
 
     def read_sprints(self, board: Board) -> list[Sprint]:
         return self.read_entity('sprint', board.board_id, Sprint)
@@ -495,16 +496,14 @@ class StatusHistory:
     to_status: str
 
 class IssueTransformer:
-    def __init__(self, issue: Issue):
-        self.issue = issue
-
-    def transform_status_history(self) -> list[WorkflowTransition]:
+    @staticmethod
+    def transform_status_history(issue: Issue) -> list[WorkflowTransition]:
         status_history = [StatusHistory(h.created, h1.from_string, h1.to_string)
-                          for h in self.issue.change_log.histories for h1 in h.items
+                          for h in issue.change_log.histories for h1 in h.items
                           if h1.field == 'status' and h1.from_string != h1.to_string]
 
         first_status_history = status_history[0]
-        status_history.insert(0, StatusHistory(self.issue.fields.created, "", first_status_history.from_status))
+        status_history.insert(0, StatusHistory(issue.fields.created, "", first_status_history.from_status))
 
         workflow_history = [WorkflowTransition(
             name=s.to_status,
@@ -514,15 +513,25 @@ class IssueTransformer:
 
         return workflow_history
 
-    def transform_sprints(self) -> SprintHistory:
-        all_sprints = [hi.from_string if s == 'from' else hi.to_string
-                       for h in self.issue.change_log.histories
+    @staticmethod
+    def transform_sprints(issue: Issue) -> SprintHistory:
+        all_sprints = [(hi.from_string, hi.from_value) if s == 'from' else (hi.to_string, hi.to_value)
+                       for h in issue.change_log.histories
                        for hi in h.items if hi.field == 'Sprint'
                        for s in ['from', 'to']]
-        cleaned_sprints = [s.strip() for s in all_sprints if s is not None]
+        cleaned_sprints = [(s[0].strip(), s[1].strip()) for s in all_sprints if s[0] is not None]
+        cleaned_sprint_values = list(set([int(s1.strip())
+                                          for s in cleaned_sprints
+                                          for s1 in s[1].split(',')
+                                          if len(s1) > 0]))
         return SprintHistory(
-            history=cleaned_sprints,
-            active_sprint=cleaned_sprints[-1] if len(cleaned_sprints) > 0 else None)
+            history=cleaned_sprint_values,
+            active_sprint=cleaned_sprints[-1][0] if len(cleaned_sprints) > 0 else None)
+
+    @staticmethod
+    def transform_issues_sprints(issues: list[Issue]) -> list[dict[int: SprintHistory]]:
+        return [{iss.id: IssueTransformer.transform_sprints(iss)}  for iss in issues]
+
 
 class TransformUtils:
     @staticmethod
@@ -548,6 +557,41 @@ class BoardPandasTransformer:
             for s in sprints
         ])
         return df
+
+    @staticmethod
+    def transform_issues_sprints(issues_sprints: list[dict[int: SprintHistory]]) -> pd.DataFrame:
+        df = pd.DataFrame([
+            EPRIssueSprints(
+                edsr_id=hs,
+                edir_id=issue_id
+            ).model_dump()
+            for isp in issues_sprints
+            for issue_id, issues_sprints in isp.items()
+            for hs in issues_sprints.history
+            if hs is not None
+        ])
+        return df
+
+
+class ParquetWriter:
+    def __init__(self, location: str):
+        self.location = location
+
+    def write_entity(self, board_id: str, entity_name: str, df: pd.DataFrame) -> None:
+        if self.location.startswith('s3'):
+            logger.info(f"Writing to S3 location: {self.location}: {entity_name}")
+            path = f"{self.location}{entity_name}/{board_id}.parquet"
+            logger.info(f"Writing to S3 location: {path}")
+
+            wr.s3.to_parquet(df=df, path=path, index=False)
+        else:
+            logger.info(f"Writing to local file: {self.location}: {entity_name}")
+            folder_name = os.path.abspath(os.path.join(os.path.dirname(__file__), f"../data/{entity_name}"))
+            if not os.path.exists(folder_name):
+                os.makedirs(folder_name)
+
+            df.to_parquet(f"{os.path.join(folder_name, board_id)}.parquet", index=False)
+        logger.info(f"Writing entity {entity_name}:{board_id} completed.")
 
 
 class JSMProcessor:
@@ -584,10 +628,18 @@ class JSMProcessor:
     def process_board(self, board: Board):
         logger.info(f"====== Processing board: {board.board_id} ====== ")
 
-        # board_configuration, sprints, issues = self.load_board(board)
+        #board_configuration, sprints, issues = self.load_board(board)
         board_configuration, sprints, issues = self.read_board(board)
 
+        writer = ParquetWriter(self.config.output_location)
+
         sprint_records = BoardPandasTransformer.transform_sprint_records(sprints)
+        writer.write_entity(board.board_id, "epr_dim_sprint_records", sprint_records)
+
+        issues_sprints = IssueTransformer.transform_issues_sprints(issues)
+        issue_sprints_records = BoardPandasTransformer.transform_issues_sprints(issues_sprints)
+        writer.write_entity(board.board_id, "epr_dim_issue_sprints", issue_sprints_records)
+
         pass
 
         logger.info(f"====== Processing board: {board.board_id} completed ======")
