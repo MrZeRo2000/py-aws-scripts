@@ -804,6 +804,7 @@ if __name__ == "__main__":
 
     # run for all boards, prod version
     p.prepare()
+    ## runs boards in sequence
     for config_board in config.boards:
         p.process_board(config_board)
 
