@@ -3,6 +3,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import pandas as pd
+import numpy as np
 import time
 import logging.config
 import json
@@ -51,7 +52,8 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 logger = get_logger(__name__)
-TIMESTAMP_FORMAT = '%Y-%m-%dT%H:%M:%S.%fZ'
+TIMESTAMP_FORMAT_Z = '%Y-%m-%dT%H:%M:%S.%fZ'
+TIMESTAMP_FORMAT_ZERO = '%Y-%m-%dT%H:%M:%S.%f+0000'
 
 class ServiceDict(UserDict):
     def __init__(self, session):
@@ -124,6 +126,7 @@ class ChangeLog(BaseModel):
     histories: list[History]
 
 class Named(BaseModel):
+    id: Optional[str]=None
     name: str
 
 class Valued(BaseModel):
@@ -162,6 +165,7 @@ class Issue(BaseModel):
     change_log: Optional[ChangeLog] = Field(None, alias="changelog")
 
 class WorkflowTransition(BaseModel):
+    id: int
     name: str
     from_date: str
     to_date: Optional[str]
@@ -181,6 +185,36 @@ class EPRSprintRecords(BaseModel):
 class EPRIssueSprints(BaseModel):
     edsr_id: int
     edir_id: int
+
+class EPRIssueRecords(BaseModel):
+    edir_id: int
+    edir_board_id: int
+    edir_summary: Optional[str]
+    edir_story_points: Optional[float]
+    edir_labels: Optional[str]
+    edir_components: Optional[str]
+    edir_issue_type: Optional[str]
+    edir_flagged: Optional[int]=None
+    edir_resolution_datm: Optional[datetime]
+    edir_resolution: Optional[str]
+    edir_status: Optional[str]
+    edir_column_name: Optional[str]
+    edir_environment: Optional[str]
+    edir_created_datm: Optional[datetime]
+    edir_active_sprint_id: Optional[int]
+    edir_epic_name: Optional[str]
+    edir_priority_name: Optional[str]=None
+    edir_fix_versions: Optional[str]=None
+    edir_project_key: Optional[str]=None
+
+class EPRIssueStatusChangeHistory(BaseModel):
+    efsc_id: int
+    efsc_board_id: int
+    efsc_status_name: str
+    efsc_from_datm: datetime
+    efsc_to_datm: Optional[datetime]
+    efsc_work_in_days: Optional[int]=None
+    efsc_work_in_days_weekend_excluded: Optional[int]=None
 
 class JSMConfig:
     BOARDS_FILE_NAME = "boards.json"
@@ -483,11 +517,9 @@ class APIDataLoader:
             self.writer.write_issues(board, issues)
 
 class BoardConfigurationTransformer:
-    def __init__(self, board_configuration: BoardConfiguration):
-        self.board_configuration = board_configuration
-
-    def transform_columns(self) -> dict:
-        return {s.id: c.name for c in self.board_configuration.column_config.columns for s in c.statuses}
+    @staticmethod
+    def transform_columns(board_configuration: BoardConfiguration) -> dict[int, str]:
+        return {int(s.id): c.name for c in board_configuration.column_config.columns for s in c.statuses}
 
 @dataclass
 class StatusHistory:
@@ -502,16 +534,20 @@ class IssueTransformer:
                           for h in issue.change_log.histories for h1 in h.items
                           if h1.field == 'status' and h1.from_string != h1.to_string]
 
-        first_status_history = status_history[0]
-        status_history.insert(0, StatusHistory(issue.fields.created, "", first_status_history.from_status))
+        if len(status_history) == 0:
+            return []
+        else:
+            first_status_history = status_history[0]
+            status_history.insert(0, StatusHistory(issue.fields.created, "", first_status_history.from_status))
 
-        workflow_history = [WorkflowTransition(
-            name=s.to_status,
-            from_date=s.created,
-            to_date=(status_history[i + 1].created if i < len(status_history) - 1 else None))
-            for (i, s) in enumerate(status_history)]
+            workflow_history = [WorkflowTransition(
+                id=issue.id,
+                name=s.to_status,
+                from_date=s.created,
+                to_date=(status_history[i + 1].created if i < len(status_history) - 1 else None))
+                for (i, s) in enumerate(status_history)]
 
-        return workflow_history
+            return workflow_history
 
     @staticmethod
     def transform_sprints(issue: Issue) -> SprintHistory:
@@ -530,17 +566,45 @@ class IssueTransformer:
             active_sprint=int(cleaned_sprint_values[-1]) if len(cleaned_sprint_values) > 0 else None)
 
     @staticmethod
-    def transform_issues_sprints(issues: list[Issue]) -> list[dict[int: SprintHistory]]:
-        return [{iss.id: IssueTransformer.transform_sprints(iss)}  for iss in issues]
+    def transform_issues_sprints(issues: list[Issue]) -> dict[int: SprintHistory]:
+        return {iss.id: IssueTransformer.transform_sprints(iss)  for iss in issues}
 
+    @staticmethod
+    def transform_issues_status_history(issues: list[Issue]) -> dict[int: list[WorkflowTransition]]:
+        return {iss.id: IssueTransformer.transform_status_history(iss) for iss in issues}
 
 class TransformUtils:
     @staticmethod
     def str_to_date_time(s: str) -> Optional[datetime]:
         try:
-            return datetime.strptime(s, TIMESTAMP_FORMAT) if s is not None else None
+            if s is not None and s.endswith('Z'):
+                return datetime.strptime(s, TIMESTAMP_FORMAT_Z)
+            elif s is not None and s.endswith('+0000'):
+                return datetime.strptime(s, TIMESTAMP_FORMAT_ZERO)
+            else:
+                return None
         except ValueError:
             return None
+
+    @staticmethod
+    def list_to_str(ls: list[str]) -> Optional[str]:
+        return ','.join(ls) if ls is not None else None
+
+    @staticmethod
+    def list_named_to_str(ls: Optional[list[Named]]) -> Optional[str]:
+        return ','.join([n.name for n in ls if n is not None and len(n.name) > 0]) if ls is not None else None
+
+    @staticmethod
+    def named_to_str(value: Optional[Named]) -> Optional[str]:
+        return value.name if value is not None else None
+
+    @staticmethod
+    def valued_to_str(value: Optional[Valued]) -> Optional[str]:
+        return value.value if value is not None else None
+
+    @staticmethod
+    def bool_to_int(value: bool) -> int:
+        return 1 if value else 0
 
 class BoardPandasTransformer:
 
@@ -560,17 +624,81 @@ class BoardPandasTransformer:
         return df
 
     @staticmethod
-    def transform_issues_sprints(issues_sprints: list[dict[int: SprintHistory]]) -> pd.DataFrame:
+    def transform_issues_sprints(issues_sprints: dict[int: SprintHistory]) -> pd.DataFrame:
         df = pd.DataFrame([
             EPRIssueSprints(
                 edsr_id=hs,
                 edir_id=issue_id
             ).model_dump()
-            for isp in issues_sprints
-            for issue_id, issues_sprints in isp.items()
+            for issue_id, issues_sprints in issues_sprints.items()
             for hs in issues_sprints.history
             if hs is not None
         ])
+        return df
+
+    @staticmethod
+    def transform_issue_records(
+            board: Board,
+            issues: list[Issue],
+            issues_sprints: dict[int: SprintHistory],
+            columns: dict[int, str]) -> pd.DataFrame:
+        df = pd.DataFrame([
+            EPRIssueRecords(
+                edir_id=iss.id,
+                edir_board_id=int(board.board_id),
+                edir_summary=iss.fields.summary,
+                edir_story_points=iss.fields.story_points,
+                edir_labels=TransformUtils.list_to_str(iss.fields.labels),
+                edir_components=TransformUtils.list_named_to_str(iss.fields.components),
+                edir_issue_type=TransformUtils.named_to_str(iss.fields.issue_type),
+                edir_flagged=TransformUtils.bool_to_int(iss.fields.flagged),
+                edir_resolution_datm=TransformUtils.str_to_date_time(iss.fields.resolution_date),
+                edir_resolution=TransformUtils.named_to_str(iss.fields.resolution),
+                edir_status=TransformUtils.named_to_str(iss.fields.status),
+                edir_column_name=columns.get(int(iss.fields.status.id)),
+                edir_environment=TransformUtils.valued_to_str(iss.fields.environment),
+                edir_created_datm=TransformUtils.str_to_date_time(iss.fields.created),
+                edir_active_sprint_id=issues_sprints.get(iss.id).active_sprint,
+                edir_epic_name=iss.fields.epic_name,
+                edir_priority_name=TransformUtils.named_to_str(iss.fields.priority),
+                edir_fix_versions=TransformUtils.list_named_to_str(iss.fields.fix_versions),
+                edir_project_key=iss.fields.project.key
+            ).model_dump()
+            for iss in issues
+        ])
+        return df
+
+    @staticmethod
+    def transform_issue_status_change_history(board: Board, issues: list[Issue]) -> pd.DataFrame:
+        workflow_transitions = {k: v
+                                for k, v in IssueTransformer.transform_issues_status_history(issues).items()
+                                if len(v) > 0}
+        df = pd.DataFrame([
+            EPRIssueStatusChangeHistory(
+                efsc_id=k,
+                efsc_board_id=int(board.board_id),
+                efsc_status_name=v1.name,
+                efsc_from_datm=TransformUtils.str_to_date_time(v1.from_date),
+                efsc_to_datm=TransformUtils.str_to_date_time(v1.to_date)
+            ).model_dump()
+            for k, v in workflow_transitions.items() for v1 in v
+        ])
+
+        df["efsc_work_in_days"] = (df["efsc_to_datm"] - df["efsc_from_datm"]).dt.days.astype('Int64')
+
+        mask = df['efsc_from_datm'].notna() & df['efsc_to_datm'].notna()
+
+        # Initialize working days with NaN
+        df['efsc_work_in_days_weekend_excluded'] = np.nan
+
+        # Apply np.busday_count only where both dates exist
+        df.loc[mask, 'efsc_work_in_days_weekend_excluded'] = np.busday_count(
+            df.loc[mask, 'efsc_from_datm'].values.astype('datetime64[D]'),
+            df.loc[mask, 'efsc_to_datm'].values.astype('datetime64[D]')
+        )
+
+        df['efsc_work_in_days_weekend_excluded'] = df['efsc_work_in_days_weekend_excluded'].astype('Int64')
+
         return df
 
 
@@ -629,8 +757,13 @@ class JSMProcessor:
     def process_board(self, board: Board):
         logger.info(f"====== Processing board: {board.board_id} ====== ")
 
-        #board_configuration, sprints, issues = self.load_board(board)
-        board_configuration, sprints, issues = self.read_board(board)
+        # fetches data from API, prod version
+        board_configuration, sprints, issues = self.load_board(board)
+
+        # reads data from values stored locally, dev version
+        # board_configuration, sprints, issues = self.read_board(board)
+
+        board_columns = BoardConfigurationTransformer.transform_columns(board_configuration)
 
         writer = ParquetWriter(self.config.output_location)
 
@@ -641,7 +774,11 @@ class JSMProcessor:
         issue_sprints_records = BoardPandasTransformer.transform_issues_sprints(issues_sprints)
         writer.write_entity(board.board_id, "epr_dim_issue_sprints", issue_sprints_records)
 
-        pass
+        issue_records = BoardPandasTransformer.transform_issue_records(board, issues, issues_sprints, board_columns)
+        writer.write_entity(board.board_id, "epr_dim_issue_records", issue_records)
+
+        issue_status_change_history = BoardPandasTransformer.transform_issue_status_change_history(board, issues)
+        writer.write_entity(board.board_id, "epr_fct_issue_status_change_history", issue_status_change_history)
 
         logger.info(f"====== Processing board: {board.board_id} completed ======")
 
@@ -661,16 +798,18 @@ if __name__ == "__main__":
     config = JSMConfig(jsm_secret_name, s3_raw_location, s3_output_location)
 
     p = JSMProcessor(config)
+
+    # run for one sample board, dev version
     p.process_board(config.boards[0])
 
-'''
+    # run for all boards, prod version
     p.prepare()
-
     for config_board in config.boards:
         p.process_board(config_board)
-'''
 
+# option with multiple threads if performance improvement is needed
 '''
+    
     with ThreadPoolExecutor(max_workers=4) as executor:
         for config_board in config.boards:
             executor.submit(execute_loader_for_board, config_board)
