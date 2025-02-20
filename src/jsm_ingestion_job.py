@@ -168,7 +168,7 @@ class WorkflowTransition(BaseModel):
 
 class SprintHistory(BaseModel):
     history: list[int]=[]
-    active_sprint: Optional[str]=None
+    active_sprint: Optional[int]=None
 
 class EPRSprintRecords(BaseModel):
     edsr_id: int
@@ -515,18 +515,19 @@ class IssueTransformer:
 
     @staticmethod
     def transform_sprints(issue: Issue) -> SprintHistory:
-        all_sprints = [(hi.from_string, hi.from_value) if s == 'from' else (hi.to_string, hi.to_value)
+        all_sprints = [hi.from_value if s == 'from' else hi.to_value
                        for h in issue.change_log.histories
                        for hi in h.items if hi.field == 'Sprint'
                        for s in ['from', 'to']]
-        cleaned_sprints = [(s[0].strip(), s[1].strip()) for s in all_sprints if s[0] is not None]
-        cleaned_sprint_values = list(set([int(s1.strip())
-                                          for s in cleaned_sprints
-                                          for s1 in s[1].split(',')
-                                          if len(s1) > 0]))
+
+        cleaned_sprint_values = [int(s1.strip())
+                                          for s in all_sprints
+                                          if s is not None
+                                          for s1 in s.split(',')
+                                          if s1 is not None and len(s1) > 0]
         return SprintHistory(
-            history=cleaned_sprint_values,
-            active_sprint=cleaned_sprints[-1][0] if len(cleaned_sprints) > 0 else None)
+            history=list(set(cleaned_sprint_values)),
+            active_sprint=int(cleaned_sprint_values[-1]) if len(cleaned_sprint_values) > 0 else None)
 
     @staticmethod
     def transform_issues_sprints(issues: list[Issue]) -> list[dict[int: SprintHistory]]:

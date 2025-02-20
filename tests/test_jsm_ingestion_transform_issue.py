@@ -204,7 +204,7 @@ def test_transform_issue(issue: Issue):
 def test_transform_sprints(issue: Issue):
     sprint_history = IssueTransformer.transform_sprints(issue)
 
-    assert sprint_history.active_sprint == "RDRI - 227"
+    assert sprint_history.active_sprint == 30124
     assert len(sprint_history.history) == 2
 
     assert 30034 in sprint_history.history
@@ -214,5 +214,5 @@ def test_transform_sprints(issue: Issue):
 
     assert issue_sprint_history[0].get(issue.id) is not None
 
-    assert issue_sprint_history[0].get(issue.id).active_sprint == "RDRI - 227"
+    assert issue_sprint_history[0].get(issue.id).active_sprint == 30124
     assert len(issue_sprint_history[0].get(issue.id).history) == 2
